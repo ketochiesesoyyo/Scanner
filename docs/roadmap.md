@@ -15,14 +15,14 @@ their data is. Nothing leaves the device.
 
 | # | Task | Who | Acceptance criterion |
 |---|------|-----|----------------------|
-| [ ] M1.1 | **Persistence models** in `ScannerCore`: SwiftData `ScanRecord` / `PageRecord` referencing files on disk; `FileStore` under Application Support with `.completeFileProtection` (CAP-04, §9 Security) | | Round-trip test: save a 3-page document, reload, originals byte-identical. Files carry complete protection attribute. |
-| [ ] M1.2 | **Write-ahead capture session**: each page is written to disk the moment it arrives; an interrupted session is restored on next launch (§9 Reliability, spike 4) | | Test: kill the process mid-session (simulate by discarding the in-memory model), relaunch, session and page order intact. |
-| [ ] M1.3 | **Library screen**: list of scans with thumbnail, title, date, page count; rename, delete; open into Review | | 100 scans scroll smoothly on the simulator; delete removes files, not just the record. |
-| [ ] M1.4 | **Thumbnails** generated at capture (long side ≈ 400 px) and stored as derivatives; Review grid stops decoding full-res originals | | Review of a 25-page document stays under 150 MB resident on device. |
-| [ ] M1.5 | **Export formats + size estimate**: JPEG (one file per page, zipped when >1) and TXT alongside PDF; estimated output size per preset shown before export (EXP-01, EXP-02) | | Estimate within ±15% of the actual file for the fixture pages. |
-| [ ] M1.6 | **Save to Files** via `fileExporter` in addition to the share sheet (EXP-01) | | Exported PDF opens in Files and is searchable there. |
-| [ ] M1.7 | **Face ID lock + Settings**: optional biometric lock (LocalAuthentication), "Delete everything", processing explanation screen (§9 Security, §10) | | Lock engages on background→foreground; delete leaves no files in Application Support or tmp. |
-| [ ] M1.8 | **Copy and privacy pass**: every screen that processes shows `ProcessingBadge`; export button copy says what it does; no dead ends | | Walkthrough checklist in PR description. |
+| [~] M1.1 | **Persistence models** in `ScannerCore`: SwiftData `ScanRecord` / `PageRecord` referencing files on disk; `FileStore` under Application Support with `.completeFileProtection` (CAP-04, §9 Security) | ketochi · Claude | Round-trip test: save a 3-page document, reload, originals byte-identical. Files carry complete protection attribute. |
+| [~] M1.2 | **Write-ahead capture session**: each page is written to disk the moment it arrives; an interrupted session is restored on next launch (§9 Reliability, spike 4) | ketochi · Claude | Test: kill the process mid-session (simulate by discarding the in-memory model), relaunch, session and page order intact. |
+| [~] M1.3 | **Library screen**: list of scans with thumbnail, title, date, page count; rename, delete; open into Review | ketochi · Claude | 100 scans scroll smoothly on the simulator; delete removes files, not just the record. |
+| [~] M1.4 | **Thumbnails** generated at capture (long side ≈ 400 px) and stored as derivatives; Review grid stops decoding full-res originals | ketochi · Claude | Review of a 25-page document stays under 150 MB resident on device. |
+| [~] M1.5 | **Export formats + size estimate**: JPEG (one file per page, zipped when >1) and TXT alongside PDF; estimated output size per preset shown before export (EXP-01, EXP-02) | ketochi · Claude | Estimate within ±15% of the actual file for the fixture pages. |
+| [~] M1.6 | **Save to Files** via `fileExporter` in addition to the share sheet (EXP-01) | ketochi · Claude | Exported PDF opens in Files and is searchable there. |
+| [~] M1.7 | **Face ID lock + Settings**: optional biometric lock (LocalAuthentication), "Delete everything", processing explanation screen (§9 Security, §10) | ketochi · Claude | Lock engages on background→foreground; delete leaves no files in Application Support or tmp. |
+| [~] M1.8 | **Copy and privacy pass**: every screen that processes shows `ProcessingBadge`; export button copy says what it does; no dead ends | ketochi · Claude | Walkthrough checklist in PR description. |
 
 Definition of done for M1: all boxes ticked, tests green, `docs/mvp-plan.md` §5 rows for CAP-04, EXP-01, EXP-02, Privacy, Library, Recovery marked implemented.
 
