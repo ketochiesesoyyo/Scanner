@@ -72,17 +72,17 @@ Key design rules carried from the docs: originals are immutable (store capture +
 | CAP-01 auto-capture | Custom AVFoundation session; `DetectDocumentSegmentationRequest` per frame → quad; stability = quad-corner velocity below threshold for N frames; framing = quad inside safe area, min area; lighting = mean luma band; capture full-res still when all hold. Live guidance chips: "acércate", "más luz", "quieto", "falta una esquina". |
 | CAP-02 manual controls | Shutter, torch, filter picker, crop with draggable corners (CoreImage `perspectiveCorrection`), rotate. |
 | CAP-03 sessions | Session = ordered pages; reorder/delete/insert/recapture; 25+ pages without restart; thumbnails rendered off-main. |
-| CAP-04 originals | Persist original still immediately (write-ahead, `NSFileProtectionComplete`), quad and filter as data; derivative cached, regenerable. |
+| CAP-04 originals  ✅ M1 | Persist original still immediately (write-ahead, `NSFileProtectionComplete`), quad and filter as data; derivative cached, regenerable. |
 | QLT-01 scores | Per page: blur (Laplacian variance inside quad), glare (% clipped highlights), shadow (luma gradient across page), crop completeness (quad confidence + edge contact), perspective (quad skew), readability (share of OCR words under confidence threshold). iOS 26: lens-smudge signal. Thresholds set on the benchmark corpus, per document class. |
 | QLT-02 duplicates/sequence | Feature-print distance between pages → "possible duplicate"; page-number patterns in OCR ("3 de 7", "Page 3 of 7") → "page 4 may be missing / out of order". Warn only, never auto-fix. |
 | OCR-01 | `RecognizeTextRequest` (accurate, `es`, `en`, auto language detection) run off-main per page while capture continues; text copyable from the page view. |
 | CLS-01 | Rule-based classifier on OCR text + layout at MVP (Mexico-first vocabulary: RFC, CURP, INE, CFDI/factura, recibo, comprobante de domicilio, acta de nacimiento, contrato, nómina; English: invoice, receipt, agreement…). `NSDataDetector` for dates/amounts. Output: suggested type, filename `{type}-{party}-{yyyy-MM-dd}.pdf`, destination. Replace with a Create ML text classifier once the corpus exists. |
-| EXP-01 | PDF and searchable PDF via CoreGraphics (draw page image, then recognized words in invisible text mode at their boxes), JPEG, TXT; `UIActivityViewController` + Files exporter; no watermark. |
-| EXP-02 | Presets Email / Standard / Archive (long-side px + JPEG quality) with size estimate computed before export. |
-| Privacy controls | "Procesado en tu iPhone" label on every screen that processes; Face ID lock (LocalAuthentication); data protection; delete-all; no third-party SDKs in MVP. |
-| Library (answers PRD §18-4) | Local library **on** by default (paid app needs a home; household-records persona; enables "find the warranty" later). Verification screen always offers export/route first, so transient use stays one tap. |
+| EXP-01  ✅ M1 | PDF and searchable PDF via CoreGraphics (draw page image, then recognized words in invisible text mode at their boxes), JPEG, TXT; `UIActivityViewController` + Files exporter; no watermark. |
+| EXP-02  ✅ M1 | Presets Email / Standard / Archive (long-side px + JPEG quality) with size estimate computed before export. |
+| Privacy controls  ✅ M1 | "Procesado en tu iPhone" label on every screen that processes; Face ID lock (LocalAuthentication); data protection; delete-all; no third-party SDKs in MVP. |
+| Library (answers PRD §18-4)  ✅ M1 | Local library **on** by default (paid app needs a home; household-records persona; enables "find the warranty" later). Verification screen always offers export/route first, so transient use stays one tap. |
 | Entry points | App + Control Center/Lock Screen control (`ControlWidget`) + App Intent "Escanear documento" at MVP; share extension (import image/PDF) in P1. |
-| Recovery | Session state and each page written to disk at capture time; on launch, an in-progress session is restored (PRD §9 reliability). |
+| Recovery  ✅ M1 | Session state and each page written to disk at capture time; on launch, an in-progress session is restored (PRD §9 reliability). |
 
 ## 6. Milestones (sequenced by risk; sizes are estimates for one developer working with Claude)
 

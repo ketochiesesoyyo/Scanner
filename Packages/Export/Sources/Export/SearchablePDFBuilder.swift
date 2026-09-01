@@ -41,7 +41,8 @@ public struct SearchablePDFBuilder: Sendable {
         }
 
         for page in document.pages {
-            let encoded = try ImageEncoder.jpeg(page.original, preset: preset)
+            // Decode → encode → draw one page at a time; the decoded original is released before the next page.
+            let encoded = try ImageEncoder.jpeg(try page.loadOriginal(), preset: preset)
             let size = Self.pageSize(fitting: encoded.pixelSize)
             var box = CGRect(origin: .zero, size: size)
             let boxData = withUnsafeBytes(of: &box) { Data($0) }

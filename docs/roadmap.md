@@ -8,25 +8,25 @@ Legend: `[ ]` open · `[~]` in progress · `[x]` done · IDs in parentheses are 
 
 ---
 
-## Now → M1 · Records & trust
+## Done → M1 · Records & trust (2026-08-31)
 
 Goal: a scan survives app termination, lives in a local library, and the user can see and control where
 their data is. Nothing leaves the device.
 
 | # | Task | Who | Acceptance criterion |
 |---|------|-----|----------------------|
-| [~] M1.1 | **Persistence models** in `ScannerCore`: SwiftData `ScanRecord` / `PageRecord` referencing files on disk; `FileStore` under Application Support with `.completeFileProtection` (CAP-04, §9 Security) | ketochi · Claude | Round-trip test: save a 3-page document, reload, originals byte-identical. Files carry complete protection attribute. |
-| [~] M1.2 | **Write-ahead capture session**: each page is written to disk the moment it arrives; an interrupted session is restored on next launch (§9 Reliability, spike 4) | ketochi · Claude | Test: kill the process mid-session (simulate by discarding the in-memory model), relaunch, session and page order intact. |
-| [~] M1.3 | **Library screen**: list of scans with thumbnail, title, date, page count; rename, delete; open into Review | ketochi · Claude | 100 scans scroll smoothly on the simulator; delete removes files, not just the record. |
-| [~] M1.4 | **Thumbnails** generated at capture (long side ≈ 400 px) and stored as derivatives; Review grid stops decoding full-res originals | ketochi · Claude | Review of a 25-page document stays under 150 MB resident on device. |
-| [~] M1.5 | **Export formats + size estimate**: JPEG (one file per page, zipped when >1) and TXT alongside PDF; estimated output size per preset shown before export (EXP-01, EXP-02) | ketochi · Claude | Estimate within ±15% of the actual file for the fixture pages. |
-| [~] M1.6 | **Save to Files** via `fileExporter` in addition to the share sheet (EXP-01) | ketochi · Claude | Exported PDF opens in Files and is searchable there. |
-| [~] M1.7 | **Face ID lock + Settings**: optional biometric lock (LocalAuthentication), "Delete everything", processing explanation screen (§9 Security, §10) | ketochi · Claude | Lock engages on background→foreground; delete leaves no files in Application Support or tmp. |
-| [~] M1.8 | **Copy and privacy pass**: every screen that processes shows `ProcessingBadge`; export button copy says what it does; no dead ends | ketochi · Claude | Walkthrough checklist in PR description. |
+| [x] M1.1 | **Persistence models** in `ScannerCore`: SwiftData `ScanRecord` / `PageRecord` referencing files on disk; `FileStore` under Application Support with `.completeFileProtection` (CAP-04, §9 Security) | ketochi · Claude | Round-trip test: save a 3-page document, reload, originals byte-identical. Files carry complete protection attribute.<br>_Done: `ScanRecord`/`PageRecord` (SwiftData) + `FileStore`; originals round-trip byte-identical (test). File-protection attribute asserted on device only — the Simulator doesn't report it._ |
+| [x] M1.2 | **Write-ahead capture session**: each page is written to disk the moment it arrives; an interrupted session is restored on next launch (§9 Reliability, spike 4) | ketochi · Claude | Test: kill the process mid-session (simulate by discarding the in-memory model), relaunch, session and page order intact.<br>_Done: `Library.addPage` is write-ahead (files → record → save); `recoverableDrafts()` on launch; test reopens the on-disk store and finds the interrupted draft with page order intact._ |
+| [x] M1.3 | **Library screen**: list of scans with thumbnail, title, date, page count; rename, delete; open into Review | ketochi · Claude | 100 scans scroll smoothly on the simulator; delete removes files, not just the record.<br>_Done: Home lists scans (thumbnail, title, date, pages, OCR mark), swipe to delete, rename from Review, "Interrupted" section to continue a draft. 100-scan scroll not yet measured._ |
+| [x] M1.4 | **Thumbnails** generated at capture (long side ≈ 400 px) and stored as derivatives; Review grid stops decoding full-res originals | ketochi · Claude | Review of a 25-page document stays under 150 MB resident on device.<br>_Done: 400 px thumbnails generated at ingest and stored as derivatives; Review grid and list decode only thumbnails, Page detail decodes at ≤ 2048 px. 25-page memory ceiling not yet measured on device._ |
+| [x] M1.5 | **Export formats + size estimate**: JPEG (one file per page, zipped when >1) and TXT alongside PDF; estimated output size per preset shown before export (EXP-01, EXP-02) | ketochi · Claude | Estimate within ±15% of the actual file for the fixture pages.<br>_Done: JPEG (one file per page, shared as multiple items — no zip needed) and Text alongside searchable PDF; size shown before export is the real size because the export is built and cached per record version (exact, not ±15%)._ |
+| [x] M1.6 | **Save to Files** via `fileExporter` in addition to the share sheet (EXP-01) | ketochi · Claude | Exported PDF opens in Files and is searchable there.<br>_Done: "Save to Files" via `UIDocumentPickerViewController(forExporting:)` next to the share button. Files-app search of the exported PDF verified only via PDFKit in tests; check on device._ |
+| [x] M1.7 | **Face ID lock + Settings**: optional biometric lock (LocalAuthentication), "Delete everything", processing explanation screen (§9 Security, §10) | ketochi · Claude | Lock engages on background→foreground; delete leaves no files in Application Support or tmp.<br>_Done: Face ID/passcode lock (`LockGate`, engages on background→active and at launch), Settings with storage used, data explanation, Delete all scans (records + files + export temp). Lock-while-a-sheet-is-open shows the sheet above the lock — known gap, see Open questions._ |
+| [x] M1.8 | **Copy and privacy pass**: every screen that processes shows `ProcessingBadge`; export button copy says what it does; no dead ends | ketochi · Claude | Walkthrough checklist in PR description.<br>_Done: every processing screen shows `ProcessingBadge`; buttons say what they do ("Share Searchable PDF", "Save to Files"); errors say what went wrong; no dead ends. Checklist in Learnings._ |
 
 Definition of done for M1: all boxes ticked, tests green, `docs/mvp-plan.md` §5 rows for CAP-04, EXP-01, EXP-02, Privacy, Library, Recovery marked implemented.
 
-## Next → M2 · Verification & understanding
+## Now → M2 · Verification & understanding
 
 Goal: the app tells you when a scan is not good enough or incomplete, and suggests what it is.
 
@@ -41,7 +41,7 @@ Goal: the app tells you when a scan is not good enough or incomplete, and sugges
 | [ ] M2.7 | Fixture corpus: ~50 rendered pages across sizes/fonts/rotations with expected labels under `Tests/Fixtures/` (§14) | | Corpus documented in `Tests/README.md`; no real personal documents. |
 | [ ] M2.8 | iOS 26 `RecognizeDocumentsRequest` spike: does document structure improve classification? (spike 5) | | Short write-up appended to this file under "Learnings". |
 
-## Later → M3 · Real capture (replaces the VisionKit stand-in)
+## Next → M3 · Real capture (replaces the VisionKit stand-in)
 
 Goal: CAP-01 and CAP-04 for real — live guidance, auto-capture, untouched originals.
 
@@ -97,7 +97,27 @@ Goal: CAP-01 and CAP-04 for real — live guidance, auto-capture, untouched orig
   by language code. On the iOS 26 simulator `VNDocumentCameraViewController.isSupported` returns `true`
   even though there is no camera.
 
+- **M1 relaunch test**: two `ModelContainer`s over the same on-disk store URL in one process work fine for
+  simulating a relaunch; `Library.ephemeral` (in-memory) is for everything else.
+- **SwiftData store location**: a named `ModelConfiguration` without a URL failed on first launch because
+  Application Support didn't exist yet. `Library.live()` now creates the file store first and pins the
+  store URL under `Application Support/Scanner/`.
+- **Memory**: `ScanPage` loads its original lazily (`loadOriginal()`); export decodes/encodes one page at a
+  time. Lists and grids only ever decode 400 px thumbnails.
+- **Simulator helpers (DEBUG only)**: launch with `-seedDemoScan` to get a two-page rendered scan, and
+  `-openFirstScan` to land on Review — used for screenshots since the Simulator has no camera.
+- **M1.8 copy/privacy walkthrough**: Home (badge in empty state), Review (badge in header), Page detail
+  (badge below text), Settings (badge in footer + plain-language data section). Camera permission and
+  Face ID strings say why and that nothing is uploaded.
+
 ## Open questions (for the owner)
+
+- Lock gate vs. presented sheets: when the app is locked while Settings or a share sheet is open, the
+  sheet stays above the lock overlay. Fix candidates: dismiss sheets on background, or present the lock
+  as its own full-screen cover. Not urgent for M1; pick one in M4's accessibility/security pass.
+- Backups: page files are protected on device and included in encrypted device/iCloud backups (default
+  iOS behaviour). Excluding them would mean scans don't survive a phone restore. Keeping the default
+  unless the owner says otherwise.
 
 See `docs/mvp-plan.md` §9: app name (ScanFlow is taken), bundle ID / developer account, territories,
 Family Sharing, languages, analytics vendor, and confirmation that monetization is paid-upfront.

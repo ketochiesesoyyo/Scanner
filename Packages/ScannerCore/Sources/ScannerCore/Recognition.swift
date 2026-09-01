@@ -3,7 +3,7 @@ import CoreGraphics
 
 /// One recognized token. `box` is normalized to the page (0…1) with a lower-left origin —
 /// Vision's convention, which is also PDF's, so no flipping happens between OCR and export.
-public struct RecognizedWord: Sendable, Hashable {
+public struct RecognizedWord: Sendable, Hashable, Codable {
     public let text: String
     public let box: CGRect
     public let confidence: Float
@@ -15,7 +15,7 @@ public struct RecognizedWord: Sendable, Hashable {
     }
 }
 
-public struct RecognizedLine: Sendable, Hashable {
+public struct RecognizedLine: Sendable, Hashable, Codable {
     public let text: String
     public let box: CGRect
     public let confidence: Float
@@ -42,7 +42,7 @@ public enum ConfidenceBand: String, Sendable, Codable {
     }
 }
 
-public struct PageRecognition: Sendable {
+public struct PageRecognition: Sendable, Codable {
     public let lines: [RecognizedLine]
     public let duration: Duration
 

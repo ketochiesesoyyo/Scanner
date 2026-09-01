@@ -1,94 +1,169 @@
 import SwiftUI
 import ScannerCore
+import CaptureKit
 import DesignSystem
 
+enum PageStatus: Equatable {
+    case queued, recognizing, done(ConfidenceBand), failed
+}
+
 struct ReviewView: View {
-    @Environment(ScanSessionModel.self) private var session
+    @Bindable var record: ScanRecord
+
+    @Environment(Library.self) private var library
+    @Environment(RecognitionQueue.self) private var queue
+    @Environment(ExportService.self) private var exporter
+
+    @State private var capture = CaptureCoordinator()
     @State private var preset: ExportPreset = .standard
-    @State private var shareItem: ShareItem?
+    @State private var kind: ExportKind = .searchablePDF
+    @State private var estimate: Int?
+    @State private var shareItems: ShareItems?
+    @State private var filesItems: ShareItems?
+    @State private var renaming = false
+    @State private var draftTitle = ""
+    @State private var errorMessage: String?
 
     private let columns = [GridItem(.adaptive(minimum: 150), spacing: DS.Spacing.m)]
+    private var pages: [PageRecord] { record.orderedPages }
+    private var isReading: Bool { queue.isBusy(record) }
 
     var body: some View {
-        Group {
-            if let document = session.document {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: DS.Spacing.l) {
-                        header(for: document)
-                        LazyVGrid(columns: columns, spacing: DS.Spacing.m) {
-                            ForEach(Array(document.pages.enumerated()), id: \.element.id) { index, page in
-                                NavigationLink(value: page.id) {
-                                    PageCard(page: page, index: index, status: session.status[page.id] ?? .queued)
-                                }
-                                .buttonStyle(.plain)
-                            }
+        ScrollView {
+            VStack(alignment: .leading, spacing: DS.Spacing.l) {
+                header
+                LazyVGrid(columns: columns, spacing: DS.Spacing.m) {
+                    ForEach(pages) { page in
+                        NavigationLink(value: page) {
+                            PageCard(page: page, status: status(of: page), thumbnailURL: library.files.url(for: page.thumbnailPath))
                         }
-                    }
-                    .padding(DS.Spacing.l)
-                }
-                .navigationDestination(for: UUID.self) { id in
-                    if let page = document.pages.first(where: { $0.id == id }) {
-                        PageDetailView(page: page)
+                        .buttonStyle(.plain)
                     }
                 }
-                .safeAreaInset(edge: .bottom) { exportBar }
-            } else {
-                ContentUnavailableView("No scan in progress", systemImage: "doc.viewfinder")
             }
+            .padding(DS.Spacing.l)
         }
         .navigationTitle("Review")
         .navigationBarTitleDisplayMode(.inline)
-        .sheet(item: $shareItem) { item in
-            ShareSheet(items: [item.url])
+        .navigationDestination(for: PageRecord.self) { PageDetailView(page: $0) }
+        .safeAreaInset(edge: .bottom) { exportBar }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button("Scan more pages", systemImage: "camera.viewfinder") { capture.showingCamera = true }
+                        .disabled(!DocumentCameraView.isSupported)
+                    Button("Add from Photos", systemImage: "photo.on.rectangle") { capture.showingPhotoPicker = true }
+                    Divider()
+                    Button("Rename", systemImage: "pencil") {
+                        draftTitle = record.title
+                        renaming = true
+                    }
+                } label: {
+                    Label("More", systemImage: "ellipsis.circle")
+                }
+            }
+        }
+        .captureHost(capture, target: record) { _ in }
+        .alert("Rename scan", isPresented: $renaming) {
+            TextField("Title", text: $draftTitle)
+            Button("Save") { rename() }
+            Button("Cancel", role: .cancel) {}
+        }
+        .sheet(item: $shareItems) { items in
+            ShareSheet(items: items.urls)
                 .presentationDetents([.medium, .large])
+        }
+        .sheet(item: $filesItems) { items in
+            DocumentExporter(urls: items.urls)
+                .ignoresSafeArea()
+        }
+        .alert("Something went wrong", isPresented: errorPresented) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(errorMessage ?? "")
+        }
+        .task {
+            // Opening an interrupted scan is how it gets resumed: it becomes a normal scan again.
+            if record.state == .capturing { try? library.finishCapture(record) }
+            queue.process(record)
+        }
+        .task(id: estimateKey) {
+            estimate = nil
+            guard !isReading, !pages.isEmpty else { return }
+            estimate = await exporter.estimatedBytes(for: record, preset: preset, kind: kind, library: library)
         }
     }
 
-    private func header(for document: ScanDocument) -> some View {
+    private var header: some View {
         VStack(alignment: .leading, spacing: DS.Spacing.s) {
-            Text(document.title).font(.title3.weight(.semibold))
+            Text(record.title).font(.title3.weight(.semibold))
             HStack(spacing: DS.Spacing.m) {
-                Text("^[\(document.pages.count) page](inflect: true)")
-                    .foregroundStyle(.secondary)
-                if session.isRecognizing {
-                    Label("Reading text… \(session.recognizedPageCount) of \(document.pages.count)", systemImage: "text.viewfinder")
-                        .foregroundStyle(.secondary)
-                } else {
+                Text("^[\(pages.count) page](inflect: true)")
+                if isReading {
+                    Label("Reading text… \(record.recognizedPageCount) of \(pages.count)", systemImage: "text.viewfinder")
+                } else if record.isFullyRecognized {
                     Label("Text recognized", systemImage: "checkmark.circle")
-                        .foregroundStyle(.secondary)
+                } else if !pages.isEmpty {
+                    Label("Some pages couldn't be read", systemImage: "exclamationmark.circle")
                 }
             }
             .font(.subheadline)
+            .foregroundStyle(.secondary)
             ProcessingBadge()
         }
     }
 
     private var exportBar: some View {
         VStack(spacing: DS.Spacing.s) {
-            Picker("Quality", selection: $preset) {
-                Text("Email").tag(ExportPreset.email)
-                Text("Standard").tag(ExportPreset.standard)
-                Text("Archive").tag(ExportPreset.archive)
+            HStack {
+                Picker("Format", selection: $kind) {
+                    ForEach(ExportKind.allCases) { kind in
+                        Label(kind.title, systemImage: kind.symbol).tag(kind)
+                    }
+                }
+                .pickerStyle(.menu)
+                .fixedSize()
+                Spacer()
+                Text(estimateText)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
             }
-            .pickerStyle(.segmented)
-
+            if kind.usesPreset {
+                Picker("Quality", selection: $preset) {
+                    Text("Email").tag(ExportPreset.email)
+                    Text("Standard").tag(ExportPreset.standard)
+                    Text("Archive").tag(ExportPreset.archive)
+                }
+                .pickerStyle(.segmented)
+            }
             Button {
-                Task { await export() }
+                Task { await export(to: .share) }
             } label: {
                 Group {
-                    if session.isExporting {
+                    if exporter.isExporting {
                         ProgressView().tint(.white)
                     } else {
-                        Label("Export searchable PDF", systemImage: "square.and.arrow.up")
+                        Label("Share \(kind.title)", systemImage: "square.and.arrow.up")
                     }
                 }
                 .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
-            .disabled(session.isExporting || session.isRecognizing)
+            .disabled(!canExport)
 
-            if session.isRecognizing {
+            Button {
+                Task { await export(to: .files) }
+            } label: {
+                Label("Save to Files", systemImage: "folder")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.regular)
+            .disabled(!canExport)
+
+            if isReading {
                 Text("Export unlocks when every page has been read.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
@@ -98,43 +173,74 @@ struct ReviewView: View {
         .background(.bar)
     }
 
-    private func export() async {
+    private var estimateKey: String {
+        "\(preset.rawValue)|\(kind.rawValue)|\(record.updatedAt.timeIntervalSinceReferenceDate)|\(isReading)"
+    }
+
+    private var estimateText: String {
+        if isReading { return "Size known once text is read" }
+        guard let estimate else { return pages.isEmpty ? "" : "Estimating size…" }
+        return "≈ \(estimate.formatted(.byteCount(style: .file)))"
+    }
+
+    private func status(of page: PageRecord) -> PageStatus {
+        if let band = page.confidenceBand { return .done(band) }
+        if page.recognitionData != nil { return .done(.medium) }
+        if queue.failed.contains(page.id) { return .failed }
+        if queue.inFlight.contains(page.id) { return .recognizing }
+        return .queued
+    }
+
+    private enum Destination { case share, files }
+
+    private var canExport: Bool { !exporter.isExporting && !isReading && !pages.isEmpty }
+
+    private func export(to destination: Destination) async {
         do {
-            shareItem = ShareItem(url: try await session.exportPDF(preset: preset))
+            let urls = try await exporter.export(record, preset: preset, kind: kind, library: library)
+            switch destination {
+            case .share: shareItems = ShareItems(urls: urls)
+            case .files: filesItems = ShareItems(urls: urls)
+            }
         } catch {
-            session.errorMessage = error.localizedDescription
+            errorMessage = error.localizedDescription
         }
+    }
+
+    private func rename() {
+        do { try library.rename(record, to: draftTitle) } catch { errorMessage = error.localizedDescription }
+    }
+
+    private var errorPresented: Binding<Bool> {
+        Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })
     }
 }
 
-private struct ShareItem: Identifiable {
+private struct ShareItems: Identifiable {
     let id = UUID()
-    let url: URL
+    let urls: [URL]
 }
 
 private struct PageCard: View {
-    let page: ScanPage
-    let index: Int
-    let status: ScanSessionModel.PageStatus
+    let page: PageRecord
+    let status: PageStatus
+    let thumbnailURL: URL
 
     var body: some View {
         VStack(alignment: .leading, spacing: DS.Spacing.xs) {
-            Image(decorative: page.original, scale: 1)
-                .resizable()
-                .scaledToFit()
+            ThumbnailView(url: thumbnailURL)
                 .frame(maxWidth: .infinity)
                 .frame(height: 200)
-                .background(Color(.secondarySystemBackground))
                 .clipShape(RoundedRectangle(cornerRadius: 8))
                 .overlay(alignment: .topTrailing) { statusChip.padding(6) }
-            Text("Page \(index + 1)")
+            Text("Page \(page.index + 1)")
                 .font(.subheadline.weight(.medium))
             Text(statusText)
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Page \(index + 1), \(statusText)")
+        .accessibilityLabel("Page \(page.index + 1), \(statusText)")
     }
 
     @ViewBuilder

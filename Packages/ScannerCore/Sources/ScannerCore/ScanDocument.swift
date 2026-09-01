@@ -11,18 +11,26 @@ public enum CaptureSource: String, Sendable, Codable {
 
 public struct ScanPage: Identifiable, Sendable {
     public let id: UUID
-    /// The capture exactly as the source delivered it. Never mutated (PRD CAP-04);
-    /// enhancements are derivatives rendered from this.
-    public let original: CGImage
+    public let pixelSize: CGSize
     public var recognition: PageRecognition?
+    private let loader: @Sendable () throws -> CGImage
 
+    /// A page whose capture is already in memory (tests, and the moment of capture).
     public init(id: UUID = UUID(), original: CGImage, recognition: PageRecognition? = nil) {
-        self.id = id
-        self.original = original
-        self.recognition = recognition
+        self.init(id: id, pixelSize: CGSize(width: original.width, height: original.height), recognition: recognition) { original }
     }
 
-    public var pixelSize: CGSize { CGSize(width: original.width, height: original.height) }
+    /// A page whose capture lives on disk. `loader` decodes it on demand.
+    public init(id: UUID = UUID(), pixelSize: CGSize, recognition: PageRecognition? = nil, loader: @escaping @Sendable () throws -> CGImage) {
+        self.id = id
+        self.pixelSize = pixelSize
+        self.recognition = recognition
+        self.loader = loader
+    }
+
+    /// The capture exactly as the source delivered it — never mutated (PRD CAP-04); enhancements are
+    /// derivatives. Hold one page at a time: a 25-page document is over a gigabyte decoded.
+    public func loadOriginal() throws -> CGImage { try loader() }
 }
 
 public struct ScanDocument: Identifiable, Sendable {

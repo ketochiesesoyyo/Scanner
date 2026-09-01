@@ -57,6 +57,7 @@ targets:
       properties:
         CFBundleDisplayName: Scanner
         NSCameraUsageDescription: Scanner uses the camera to capture documents. Everything is processed on your iPhone; nothing is uploaded.
+        NSFaceIDUsageDescription: Scanner uses Face ID to unlock your scans when you turn on the app lock.
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         ITSAppUsesNonExemptEncryption: false
