@@ -1,0 +1,4 @@
+// Committed. Optionally pulls in a developer-local override (Local.xcconfig, gitignored)
+// that sets DEVELOPMENT_TEAM for code signing. The "?" makes the include optional, so a
+// machine without Local.xcconfig (CI) still generates and builds for the simulator.
+#include? "Local.xcconfig"
