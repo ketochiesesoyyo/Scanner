@@ -4,8 +4,10 @@ iPhone document scanner that competes above Apple's free camera-and-crop layer: 
 export, on-device OCR and classification, open export. Sold once (199 MXN), no subscription, no account,
 no server. Working name — see `docs/mvp-plan.md` §9.
 
-- Product docs: `docs/first-principles-review.md`, `docs/prd-scanflow-v0.1.md`
+**Start here:** [AGENTS.md](AGENTS.md) (rules, layout, how we work) → [docs/roadmap.md](docs/roadmap.md) (status, what's next).
+
 - Plan and decisions: `docs/mvp-plan.md`
+- Product docs: `docs/first-principles-review.md`, `docs/prd-scanflow-v0.1.md`
 
 ## Build
 
