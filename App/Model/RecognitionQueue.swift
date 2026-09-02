@@ -62,6 +62,9 @@ final class RecognitionQueue {
         let createdAt = record.createdAt
         let verifier = DocumentVerifier()
         let classifier = DocumentClassifier()
+        #if DEBUG
+        print("PHASE verify start: \(record.pages.count) page(s)")
+        #endif
         do {
             let (verification, classification) = try await Task.detached(priority: .utility) {
                 let verification = try await verifier.verify(snapshot, contentRevision: revision)

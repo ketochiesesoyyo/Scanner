@@ -57,7 +57,8 @@ final class ExportService {
     }
 
     func estimatedBytes(for record: ScanRecord, preset: ExportPreset, kind: ExportKind, library: Library) async -> Int? {
-        try? await prepared(record, preset: preset, kind: kind, library: library).byteCount
+        // Pre-computation for a label — never compete with OCR/verification for cores.
+        try? await prepared(record, preset: preset, kind: kind, library: library, priority: .utility).byteCount
     }
 
     /// Writes the export to a protected temp folder and returns the file URLs for the share sheet.
@@ -65,7 +66,7 @@ final class ExportService {
         isExporting = true
         defer { isExporting = false }
 
-        let prepared = try await prepared(record, preset: preset, kind: kind, library: library)
+        let prepared = try await prepared(record, preset: preset, kind: kind, library: library, priority: .userInitiated)
         let directory = Self.exportsDirectory.appending(path: record.id.uuidString, directoryHint: .isDirectory)
         try? FileManager.default.removeItem(at: directory)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -105,11 +106,14 @@ final class ExportService {
         try? FileManager.default.removeItem(at: Self.exportsDirectory)
     }
 
-    private func prepared(_ record: ScanRecord, preset: ExportPreset, kind: ExportKind, library: Library) async throws -> Prepared {
+    private func prepared(_ record: ScanRecord, preset: ExportPreset, kind: ExportKind, library: Library, priority: TaskPriority) async throws -> Prepared {
         let key = CacheKey(record: record.id, preset: kind.usesPreset ? preset : .standard, kind: kind, version: record.updatedAt)
         if let hit = cache[key] { return hit }
+        #if DEBUG
+        print("PHASE export-build start: \(kind.rawValue)/\(preset.rawValue) at \(priority == .utility ? "utility" : "userInitiated")")
+        #endif
         let document = library.snapshot(record)
-        let result: Prepared = try await Task.detached(priority: .userInitiated) {
+        let result: Prepared = try await Task.detached(priority: priority) {
             switch kind {
             case .searchablePDF: .pdf(try SearchablePDFBuilder(preset: preset).build(document))
             case .jpeg: .jpegs(try JPEGExporter(preset: preset).export(document))
@@ -118,6 +122,9 @@ final class ExportService {
         }.value
         if cache.count >= 8 { cache.removeAll() }
         cache[key] = result
+        #if DEBUG
+        print("PHASE export-build done: \(kind.rawValue)/\(preset.rawValue), \(result.byteCount) bytes")
+        #endif
         return result
     }
 

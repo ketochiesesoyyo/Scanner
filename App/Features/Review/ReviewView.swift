@@ -94,7 +94,9 @@ struct ReviewView: View {
         }
         .task(id: estimateKey) {
             estimate = nil
-            guard !isReading, !pages.isEmpty else { return }
+            // Wait for verification too: kicking off the PDF pre-build while the verifier is still
+            // decoding every page saturates the CPU and starves the UI right after OCR finishes.
+            guard !isReading, !record.isVerificationStale, !pages.isEmpty else { return }
             estimate = await exporter.estimatedBytes(for: record, preset: preset, kind: kind, library: library)
         }
     }
@@ -214,11 +216,12 @@ struct ReviewView: View {
     }
 
     private var estimateKey: String {
-        "\(preset.rawValue)|\(kind.rawValue)|\(record.updatedAt.timeIntervalSinceReferenceDate)|\(isReading)"
+        "\(preset.rawValue)|\(kind.rawValue)|\(record.updatedAt.timeIntervalSinceReferenceDate)|\(isReading)|\(record.isVerificationStale)"
     }
 
     private var estimateText: String {
         if isReading { return "Size known once text is read" }
+        if record.isVerificationStale { return "Size follows the quality check" }
         guard let estimate else { return pages.isEmpty ? "" : "Estimating size…" }
         return "≈ \(estimate.formatted(.byteCount(style: .file)))"
     }
