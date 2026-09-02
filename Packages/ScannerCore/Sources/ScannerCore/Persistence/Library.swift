@@ -65,12 +65,10 @@ public final class Library {
         let originalPath = paths.original
         let thumbnailPath = paths.thumbnail
         let index = (record.pages.map(\.index).max() ?? -1) + 1
-        let page = PageRecord(id: pageID, index: index, originalPath: originalPath, thumbnailPath: thumbnailPath, pixelSize: assets.pixelSize)
-        // Insert BEFORE wiring the relationship: setting `document` on a not-yet-registered model makes
-        // iOS 18's SwiftData crash on the next save ("remapped to a temporary identifier … fatal logic
-        // error in DefaultStore"). iOS 26 tolerates the old order, which is why tests didn't catch it.
+        // No relationship is wired — the foreign key is set at init, so this insert+save carries no
+        // relationship bookkeeping for iOS 18's SwiftData to trip over (the source of all four crashes).
+        let page = PageRecord(id: pageID, documentID: record.id, index: index, originalPath: originalPath, thumbnailPath: thumbnailPath, pixelSize: assets.pixelSize)
         context.insert(page)
-        page.document = record
         record.updatedAt = .now
         record.contentRevision += 1
         try context.save()
@@ -120,11 +118,14 @@ public final class Library {
 
     public func delete(_ record: ScanRecord) throws {
         try files.removeDocument(record.id)
+        // Cascade by hand — there is no relationship delete rule any more.
+        for page in record.pages { context.delete(page) }
         context.delete(record)
         try context.save()
     }
 
     public func deleteEverything() throws {
+        for page in try context.fetch(FetchDescriptor<PageRecord>()) { context.delete(page) }
         for record in try allRecords() { context.delete(record) }
         try context.save()
         try files.removeAll()

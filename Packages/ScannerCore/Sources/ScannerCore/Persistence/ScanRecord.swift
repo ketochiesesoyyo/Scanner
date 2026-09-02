@@ -30,8 +30,6 @@ public final class ScanRecord {
     /// type Array<String>"). Deliberately a fresh column with no @Attribute(originalName:) — that
     /// rename path is itself crash-prone on iOS 18; the legacy test-only column is simply abandoned.
     private var ignoredWarningKeysStorage: [String]? = []
-    @Relationship(deleteRule: .cascade, inverse: \PageRecord.document)
-    public var pages: [PageRecord] = []
 
     public init(id: UUID = UUID(), title: String, source: CaptureSource, state: ScanState = .capturing, createdAt: Date = .now) {
         self.id = id
@@ -56,6 +54,15 @@ public final class ScanRecord {
     public var ignoredWarningKeys: [String] {
         get { ignoredWarningKeysStorage ?? [] }
         set { ignoredWarningKeysStorage = newValue }
+    }
+
+    /// Pages are looked up by foreign key, NOT a SwiftData relationship: every iOS 18 crash this
+    /// project has hit ("remapped to a temporary identifier", "This store went missing?") came from
+    /// relationship bookkeeping during saves. A plain ID sidesteps that machinery entirely.
+    public var pages: [PageRecord] {
+        let id = id
+        let descriptor = FetchDescriptor<PageRecord>(predicate: #Predicate { $0.documentID == id })
+        return (try? modelContext?.fetch(descriptor)) ?? []
     }
 
     public var orderedPages: [PageRecord] { pages.sorted { $0.index < $1.index } }
@@ -87,6 +94,8 @@ public final class ScanRecord {
 public final class PageRecord {
     // Not unique either — see the note on ScanRecord.id.
     public var id: UUID
+    /// Foreign key to the owning ScanRecord — deliberately not a SwiftData relationship (see above).
+    public var documentID: UUID
     public var index: Int
     public var originalPath: String
     public var thumbnailPath: String
@@ -95,10 +104,18 @@ public final class PageRecord {
     /// `PageRecognition` as JSON. Kept out of the main table so lists stay fast.
     @Attribute(.externalStorage) public var recognitionData: Data?
     public var confidenceBandRaw: String?
-    public var document: ScanRecord?
 
-    public init(id: UUID = UUID(), index: Int, originalPath: String, thumbnailPath: String, pixelSize: CGSize) {
+    /// The owning record, resolved by foreign key.
+    public var document: ScanRecord? {
+        let id = documentID
+        var descriptor = FetchDescriptor<ScanRecord>(predicate: #Predicate { $0.id == id })
+        descriptor.fetchLimit = 1
+        return try? modelContext?.fetch(descriptor).first
+    }
+
+    public init(id: UUID = UUID(), documentID: UUID, index: Int, originalPath: String, thumbnailPath: String, pixelSize: CGSize) {
         self.id = id
+        self.documentID = documentID
         self.index = index
         self.originalPath = originalPath
         self.thumbnailPath = thumbnailPath
