@@ -27,8 +27,9 @@ public final class ScanRecord {
     @Attribute(.externalStorage) public var classificationData: Data? = nil
     /// Stored optional: on iOS 18, lightweight migration leaves newly added array attributes nil on
     /// pre-existing rows and then fatals on non-optional access ("Unable to convert nil to expected
-    /// type Array<String>"). `originalName` keeps the column from the earlier schema.
-    @Attribute(originalName: "ignoredWarningKeys") private var ignoredWarningKeysStorage: [String]? = []
+    /// type Array<String>"). Deliberately a fresh column with no @Attribute(originalName:) — that
+    /// rename path is itself crash-prone on iOS 18; the legacy test-only column is simply abandoned.
+    private var ignoredWarningKeysStorage: [String]? = []
     @Relationship(deleteRule: .cascade, inverse: \PageRecord.document)
     public var pages: [PageRecord] = []
 
