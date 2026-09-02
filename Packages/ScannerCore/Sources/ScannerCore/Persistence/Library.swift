@@ -52,10 +52,18 @@ public final class Library {
     }
 
     @discardableResult
-    public func addPage(_ assets: PageAssets, to record: ScanRecord) throws -> PageRecord {
+    public func addPage(_ assets: PageAssets, to record: ScanRecord) async throws -> PageRecord {
         let pageID = UUID()
-        let originalPath = try files.writeOriginal(assets.originalData, extension: assets.originalExtension, document: record.id, page: pageID)
-        let thumbnailPath = try files.writeThumbnail(assets.thumbnailData, document: record.id, page: pageID)
+        let recordID = record.id
+        let files = files
+        // Multi-megabyte originals must not be written on the main actor. Files still hit disk
+        // before the database row exists — the write-ahead order is unchanged.
+        let paths = try await Task.detached(priority: .userInitiated) {
+            (original: try files.writeOriginal(assets.originalData, extension: assets.originalExtension, document: recordID, page: pageID),
+             thumbnail: try files.writeThumbnail(assets.thumbnailData, document: recordID, page: pageID))
+        }.value
+        let originalPath = paths.original
+        let thumbnailPath = paths.thumbnail
         let index = (record.pages.map(\.index).max() ?? -1) + 1
         let page = PageRecord(id: pageID, index: index, originalPath: originalPath, thumbnailPath: thumbnailPath, pixelSize: assets.pixelSize)
         // Insert BEFORE wiring the relationship: setting `document` on a not-yet-registered model makes

@@ -129,7 +129,12 @@ Goal: CAP-01 and CAP-04 for real — live guidance, auto-capture, untouched orig
   insert first, then set relationships; per-page write-ahead saves are otherwise fine. (2) SwiftUI:
   `navigationDestination` declared in a pushed view + a homogeneous typed path logs "Only root-level
   navigation destinations are effective" and can dead-end — keep one root `NavigationPath` and declare
-  every destination at the root. Test on the oldest supported iOS before calling a milestone done.
+  every destination at the root. (3) Post-capture freeze: pushing Review while the camera cover was
+  still animating away wedged the UIKit transition (touches dead, CA spinners still animating — "System
+  gesture gate timed out"); completed scans now wait in `pendingPush` until the cover's `onDismiss`.
+  Also moved off the main thread: upright rendering of full-res camera pages and the multi-MB original
+  file writes in `Library.addPage` (write-ahead order unchanged). Test on the oldest supported iOS
+  before calling a milestone done.
 
 ## Open questions (for the owner)
 

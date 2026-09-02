@@ -23,7 +23,7 @@ struct LibraryTests {
         return Library(container: container, files: try FileStore(root: directory.appending(path: "files", directoryHint: .isDirectory)))
     }
 
-    @Test func originalsRoundTripByteForByte() throws {
+    @Test func originalsRoundTripByteForByte() async throws {
         let directory = Self.temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let library = try Library.ephemeral(filesRoot: directory)
@@ -33,7 +33,7 @@ struct LibraryTests {
         for index in 0..<3 {
             let assets = try PageIngest.prepare(image: Fixtures.page(lines: ["Página \(index + 1)"]))
             originals.append(assets.originalData)
-            try library.addPage(assets, to: record)
+            try await library.addPage(assets, to: record)
         }
         try library.finishCapture(record)
 
@@ -51,15 +51,15 @@ struct LibraryTests {
         #endif
     }
 
-    @Test func interruptedSessionIsRecoverableAfterRelaunch() throws {
+    @Test func interruptedSessionIsRecoverableAfterRelaunch() async throws {
         let directory = Self.temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
 
         do {
             let library = try Self.openLibrary(in: directory)
             let draft = try library.createDraft(source: .documentCamera)
-            try library.addPage(try PageIngest.prepare(image: Fixtures.page(lines: ["uno"])), to: draft)
-            try library.addPage(try PageIngest.prepare(image: Fixtures.page(lines: ["dos"])), to: draft)
+            try await library.addPage(try PageIngest.prepare(image: Fixtures.page(lines: ["uno"])), to: draft)
+            try await library.addPage(try PageIngest.prepare(image: Fixtures.page(lines: ["dos"])), to: draft)
             // No finishCapture: the process "dies" here.
         }
 
@@ -84,12 +84,12 @@ struct LibraryTests {
         #expect(try library.allRecords().isEmpty)
     }
 
-    @Test func deleteRemovesRecordAndFiles() throws {
+    @Test func deleteRemovesRecordAndFiles() async throws {
         let directory = Self.temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let library = try Library.ephemeral(filesRoot: directory)
         let record = try library.createDraft(source: .files)
-        try library.addPage(try PageIngest.prepare(image: Fixtures.page(lines: ["borrar"])), to: record)
+        try await library.addPage(try PageIngest.prepare(image: Fixtures.page(lines: ["borrar"])), to: record)
         try library.finishCapture(record)
         let documentDirectory = library.files.url(for: record.id.uuidString)
         #expect(FileManager.default.fileExists(atPath: documentDirectory.path))
@@ -99,13 +99,13 @@ struct LibraryTests {
         #expect(!FileManager.default.fileExists(atPath: documentDirectory.path))
     }
 
-    @Test func deleteEverythingEmptiesTheStore() throws {
+    @Test func deleteEverythingEmptiesTheStore() async throws {
         let directory = Self.temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let library = try Library.ephemeral(filesRoot: directory)
         for _ in 0..<2 {
             let record = try library.createDraft(source: .files)
-            try library.addPage(try PageIngest.prepare(image: Fixtures.page(lines: ["x"])), to: record)
+            try await library.addPage(try PageIngest.prepare(image: Fixtures.page(lines: ["x"])), to: record)
             try library.finishCapture(record)
         }
         try library.deleteEverything()
@@ -119,7 +119,7 @@ struct LibraryTests {
         let library = try Library.ephemeral(filesRoot: directory)
         let record = try library.createDraft(source: .files)
         let image = Fixtures.page(lines: ["ACTA DE NACIMIENTO", "Registro Civil"])
-        let page = try library.addPage(try PageIngest.prepare(image: image), to: record)
+        let page = try await library.addPage(try PageIngest.prepare(image: image), to: record)
         try library.finishCapture(record)
 
         let recognition = try await TextRecognizer().recognize(image)

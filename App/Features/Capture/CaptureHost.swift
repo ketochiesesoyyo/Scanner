@@ -15,12 +15,18 @@ struct CaptureHost: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .fullScreenCover(isPresented: $capture.showingCamera) {
+            .fullScreenCover(isPresented: $capture.showingCamera, onDismiss: {
+                capture.cameraDismissed = true
+                if let record = capture.pendingPush {
+                    capture.pendingPush = nil
+                    onCompleted(record)
+                }
+            }) {
                 DocumentCameraView { outcome in
                     capture.showingCamera = false
                     switch outcome {
                     case .scanned(let images) where !images.isEmpty:
-                        Task { await ingest(images.map(CaptureCoordinator.Item.bitmap), source: .documentCamera) }
+                        Task { await ingest(images.map(CaptureCoordinator.Item.camera), source: .documentCamera) }
                     case .failed(let message):
                         capture.errorMessage = message
                     default:
@@ -57,7 +63,10 @@ struct CaptureHost: ViewModifier {
     }
 
     private func ingest(_ items: [CaptureCoordinator.Item], source: CaptureSource) async {
-        if let record = await capture.ingest(items, source: source, into: target, library: library, queue: queue) {
+        guard let record = await capture.ingest(items, source: source, into: target, library: library, queue: queue) else { return }
+        if source == .documentCamera && !capture.cameraDismissed {
+            capture.pendingPush = record // onDismiss pushes once the cover is gone
+        } else {
             onCompleted(record)
         }
     }

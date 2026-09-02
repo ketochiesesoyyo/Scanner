@@ -14,6 +14,10 @@ enum DemoSeed {
 
     static func runIfRequested(library: Library, queue: RecognitionQueue) {
         guard ProcessInfo.processInfo.arguments.contains(argument) else { return }
+        Task { await seed(library: library, queue: queue) }
+    }
+
+    private static func seed(library: Library, queue: RecognitionQueue) async {
         guard ((try? library.allRecords()) ?? []).isEmpty else { return }
         do {
             // No title: lets the classifier's suggestion chip show. Pages are crafted so the
@@ -26,7 +30,7 @@ enum DemoSeed {
                 pageOne,
             ]
             for lines in pages {
-                try library.addPage(try PageIngest.prepare(image: render(lines)), to: record)
+                try await library.addPage(try PageIngest.prepare(image: render(lines)), to: record)
             }
             try library.finishCapture(record)
             queue.process(record)

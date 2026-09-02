@@ -3,7 +3,9 @@ import CoreGraphics
 import Observation
 import PhotosUI
 import SwiftUI
+import UIKit
 import ScannerCore
+import CaptureKit
 import ImagePipeline
 import Telemetry
 
@@ -11,18 +13,30 @@ import Telemetry
 @MainActor @Observable
 final class CaptureCoordinator {
     enum Item: Sendable {
+        case camera(UIImage)
         case bitmap(CGImage)
         case file(Data)
 
+        /// Runs inside a detached task: orientation baking and JPEG encoding never touch the main thread.
         func prepare() throws -> PageAssets {
             switch self {
-            case .bitmap(let image): try PageIngest.prepare(image: image)
-            case .file(let data): try PageIngest.prepare(imageData: data)
+            case .camera(let image):
+                guard let upright = image.uprightCGImage() else { throw CocoaError(.fileReadCorruptFile) }
+                return try PageIngest.prepare(image: upright)
+            case .bitmap(let image): return try PageIngest.prepare(image: image)
+            case .file(let data): return try PageIngest.prepare(imageData: data)
             }
         }
     }
 
-    var showingCamera = false
+    var showingCamera = false {
+        didSet { if showingCamera { cameraDismissed = false } }
+    }
+    /// True once the camera cover's dismissal animation has fully finished. Pushing a navigation
+    /// destination while the cover is still animating away wedges UIKit's transition on device
+    /// (frozen UI, spinners still animating) — so completed scans wait in `pendingPush` until then.
+    var cameraDismissed = true
+    var pendingPush: ScanRecord?
     var showingPhotoPicker = false
     var pickerItems: [PhotosPickerItem] = []
     private(set) var isWorking = false
@@ -50,7 +64,7 @@ final class CaptureCoordinator {
             for (index, item) in items.enumerated() {
                 progress = items.count > 1 ? "Saving page \(index + 1) of \(items.count)…" : "Saving page…"
                 let assets = try await Task.detached(priority: .userInitiated) { try item.prepare() }.value
-                try library.addPage(assets, to: record)
+                try await library.addPage(assets, to: record)
                 Telemetry.record(.pageCaptured(method: method, mode: .document, qualityBand: nil, processingLatencyMs: 0))
             }
             try library.finishCapture(record)

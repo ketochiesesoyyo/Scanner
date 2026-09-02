@@ -7,7 +7,7 @@ import ScannerCore
 /// (untouched originals). CaptureKit's own camera replaces it in M3; the rest of the pipeline is unchanged.
 public struct DocumentCameraView: UIViewControllerRepresentable {
     public enum Outcome: Sendable {
-        case scanned([CGImage])
+        case scanned([UIImage])
         case cancelled
         case failed(String)
     }
@@ -39,7 +39,9 @@ public struct DocumentCameraView: UIViewControllerRepresentable {
         }
 
         public func documentCameraViewController(_ controller: VNDocumentCameraViewController, didFinishWith scan: VNDocumentCameraScan) {
-            let images = (0..<scan.pageCount).compactMap { scan.imageOfPage(at: $0).uprightCGImage() }
+            // Hand the UIImages over as-is: rendering them upright is expensive at full resolution
+            // and happens off the main thread during ingest, not here during the dismissal animation.
+            let images = (0..<scan.pageCount).map { scan.imageOfPage(at: $0) }
             onFinish(.scanned(images))
         }
 
