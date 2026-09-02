@@ -40,7 +40,10 @@ public struct CaptureView: View {
             Text(model.errorMessage ?? "")
         }
         .confirmationDialog("Discard this scan?", isPresented: $confirmingCancel, titleVisibility: .visible) {
-            Button("Discard \(model.pages.count) page(s)", role: .destructive) { onCancel() }
+            Button("Discard \(model.pages.count) page(s)", role: .destructive) {
+                model.stop()
+                onCancel()
+            }
             Button("Keep scanning", role: .cancel) {}
         }
     }
@@ -49,7 +52,12 @@ public struct CaptureView: View {
         VStack {
             HStack {
                 Button {
-                    if model.pages.isEmpty { onCancel() } else { confirmingCancel = true }
+                    if model.pages.isEmpty {
+                        model.stop()
+                        onCancel()
+                    } else {
+                        confirmingCancel = true
+                    }
                 } label: {
                     Image(systemName: "xmark")
                         .font(.title3.weight(.semibold))
@@ -104,7 +112,12 @@ public struct CaptureView: View {
                 }
                 .accessibilityLabel("Take photo")
                 Spacer()
-                Button("Done") { onFinish(model.pages) }
+                Button("Done") {
+                    // Stop the stream BEFORE dismissal starts: hardware teardown during the closing
+                    // animation can block the main thread and wedge the transition (the freeze family).
+                    model.stop()
+                    onFinish(model.pages)
+                }
                     .font(.headline)
                     .padding(.horizontal, 18)
                     .padding(.vertical, 10)
@@ -143,7 +156,10 @@ public struct CaptureView: View {
                 if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
             }
             .buttonStyle(.borderedProminent)
-            Button("Close", action: onCancel)
+            Button("Close") {
+                model.stop()
+                onCancel()
+            }
         }
         .padding(32)
         .foregroundStyle(.white)

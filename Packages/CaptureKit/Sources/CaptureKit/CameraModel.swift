@@ -53,10 +53,18 @@ public final class CameraModel {
             permissionDenied = true
             return
         }
+        #if DEBUG
+        print("PHASE camera start")
+        #endif
         engine.start()
     }
 
-    public func stop() { engine.stop() }
+    public func stop() {
+        #if DEBUG
+        print("PHASE camera stop")
+        #endif
+        engine.stop()
+    }
 
     public func shutterTapped() { engine.captureStill(auto: false) }
 

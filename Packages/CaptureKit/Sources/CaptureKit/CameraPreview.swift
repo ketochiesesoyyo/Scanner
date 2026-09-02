@@ -27,6 +27,12 @@ public struct CameraPreview: UIViewRepresentable {
         view.onHardwareShutter = onHardwareShutter
         view.updateQuad(quad)
     }
+
+    /// Detach before dealloc: releasing a preview layer that's still wired to a session can block
+    /// the main thread against the session queue mid-dismissal.
+    public static func dismantleUIView(_ uiView: PreviewUIView, coordinator: ()) {
+        uiView.previewLayer.session = nil
+    }
 }
 
 public final class PreviewUIView: UIView {
