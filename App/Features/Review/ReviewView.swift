@@ -1,6 +1,7 @@
 import SwiftUI
 import ScannerCore
 import CaptureKit
+import Telemetry
 import DesignSystem
 
 enum PageStatus: Equatable {
@@ -32,10 +33,15 @@ struct ReviewView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: DS.Spacing.l) {
                 header
+                VerificationSummaryView(record: record, pages: pages, isWorking: isReading) { warning in
+                    ignore(warning)
+                }
                 LazyVGrid(columns: columns, spacing: DS.Spacing.m) {
                     ForEach(pages) { page in
                         NavigationLink(value: page) {
-                            PageCard(page: page, status: status(of: page), thumbnailURL: library.files.url(for: page.thumbnailPath))
+                            PageCard(page: page, status: status(of: page),
+                                     hasWarning: warnedPageIndexes.contains(page.index),
+                                     thumbnailURL: library.files.url(for: page.thumbnailPath))
                         }
                         .buttonStyle(.plain)
                     }
@@ -109,7 +115,38 @@ struct ReviewView: View {
             }
             .font(.subheadline)
             .foregroundStyle(.secondary)
+            if let suggestion = titleSuggestion {
+                HStack(spacing: DS.Spacing.s) {
+                    Text("Suggested: \(suggestion)")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    Button("Use") { rename(to: suggestion) }
+                        .font(.footnote.weight(.medium))
+                        .buttonStyle(.bordered)
+                        .controlSize(.mini)
+                }
+            }
             ProcessingBadge()
+        }
+    }
+
+    /// Only offered while the title is still the automatic one (CLS-01: a suggestion, never a decision).
+    private var titleSuggestion: String? {
+        guard record.hasDefaultTitle, let classification = record.classification else { return nil }
+        return classification.suggestedTitle(fallbackDate: record.createdAt)
+    }
+
+    private var warnedPageIndexes: Set<Int> {
+        Set(record.activeWarnings.compactMap(\.pageIndex))
+    }
+
+    private func ignore(_ warning: ScanWarning) {
+        do {
+            try library.ignoreWarning(warning.key, in: record)
+            Telemetry.record(.qualityWarningResolved(type: warning.telemetryType, action: .ignore))
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 
@@ -167,6 +204,10 @@ struct ReviewView: View {
                 Text("Export unlocks when every page has been read.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
+            } else if !record.activeWarnings.isEmpty {
+                Text("^[\(record.activeWarnings.count) warning](inflect: true) above — worth a look before sending.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
         }
         .padding(DS.Spacing.m)
@@ -207,8 +248,10 @@ struct ReviewView: View {
         }
     }
 
-    private func rename() {
-        do { try library.rename(record, to: draftTitle) } catch { errorMessage = error.localizedDescription }
+    private func rename() { rename(to: draftTitle) }
+
+    private func rename(to title: String) {
+        do { try library.rename(record, to: title) } catch { errorMessage = error.localizedDescription }
     }
 
     private var errorPresented: Binding<Bool> {
@@ -224,6 +267,7 @@ private struct ShareItems: Identifiable {
 private struct PageCard: View {
     let page: PageRecord
     let status: PageStatus
+    let hasWarning: Bool
     let thumbnailURL: URL
 
     var body: some View {
@@ -233,6 +277,16 @@ private struct PageCard: View {
                 .frame(height: 200)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
                 .overlay(alignment: .topTrailing) { statusChip.padding(6) }
+                .overlay(alignment: .topLeading) {
+                    if hasWarning {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                            .padding(6)
+                            .background(.regularMaterial, in: Circle())
+                            .padding(6)
+                            .accessibilityHidden(true)
+                    }
+                }
             Text("Page \(page.index + 1)")
                 .font(.subheadline.weight(.medium))
             Text(statusText)
@@ -262,6 +316,11 @@ private struct PageCard: View {
     }
 
     private var statusText: String {
+        if hasWarning { return baseStatusText + ", needs attention" }
+        return baseStatusText
+    }
+
+    private var baseStatusText: String {
         switch status {
         case .queued: "Waiting"
         case .recognizing: "Reading text…"

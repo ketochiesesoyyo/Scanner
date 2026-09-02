@@ -16,10 +16,14 @@ enum DemoSeed {
         guard ProcessInfo.processInfo.arguments.contains(argument) else { return }
         guard ((try? library.allRecords()) ?? []).isEmpty else { return }
         do {
-            let record = try library.createDraft(source: .files, title: "Comprobante de domicilio")
+            // No title: lets the classifier's suggestion chip show. Pages are crafted so the
+            // verification summary has something to say: page 2 of 3 missing, page 3 a duplicate.
+            let record = try library.createDraft(source: .files)
+            let pageOne = ["COMPROBANTE DE DOMICILIO", "CFE Suministrador de Servicios Básicos", "Página 1 de 3", "Fecha: 15 de julio de 2026", "Total a pagar: $1,234.56"]
             let pages = [
-                ["COMPROBANTE DE DOMICILIO", "CFE Suministrador de Servicios Básicos", "Periodo: julio 2026", "Total a pagar: $1,234.56"],
-                ["Página 2 de 2", "Dirección: Av. Insurgentes Sur 1602", "Ciudad de México, 03940", "RFC: XAXX010101000"],
+                pageOne,
+                ["Página 3 de 3", "Dirección: Av. Insurgentes Sur 1602", "Ciudad de México, 03940", "RFC: XAXX010101000"],
+                pageOne,
             ]
             for lines in pages {
                 try library.addPage(try PageIngest.prepare(image: render(lines)), to: record)
@@ -36,7 +40,7 @@ enum DemoSeed {
             data: nil, width: Int(size.width), height: Int(size.height), bitsPerComponent: 8, bytesPerRow: 0,
             space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
         )!
-        context.setFillColor(CGColor(red: 0.98, green: 0.98, blue: 0.97, alpha: 1))
+        context.setFillColor(CGColor(red: 0.88, green: 0.88, blue: 0.87, alpha: 1))
         context.fill(CGRect(origin: .zero, size: size))
         let font = CTFontCreateWithName("Helvetica" as CFString, 48, nil)
         let attributes: [NSAttributedString.Key: Any] = [

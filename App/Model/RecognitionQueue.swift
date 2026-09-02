@@ -30,6 +30,7 @@ final class RecognitionQueue {
                 guard let page = record.orderedPages.first(where: { $0.recognitionData == nil && !failed.contains($0.id) }) else { break }
                 await recognize(page)
             }
+            await verifyIfNeeded(record)
             tasks[recordID] = nil
         }
     }
@@ -50,6 +51,32 @@ final class RecognitionQueue {
         tasks.values.forEach { $0.cancel() }
         tasks = [:]
         inFlight = []
+    }
+
+    /// Quality gate + classification (QLT-01/02, CLS-01), run after OCR settles. Best-effort:
+    /// a failure here never blocks the scan.
+    private func verifyIfNeeded(_ record: ScanRecord) async {
+        guard record.state == .ready, !record.pages.isEmpty, record.isVerificationStale, !Task.isCancelled else { return }
+        let snapshot = library.snapshot(record)
+        let revision = record.contentRevision
+        let createdAt = record.createdAt
+        let verifier = DocumentVerifier()
+        let classifier = DocumentClassifier()
+        do {
+            let (verification, classification) = try await Task.detached(priority: .utility) {
+                let verification = try await verifier.verify(snapshot, contentRevision: revision)
+                let classification = classifier.classify(text: snapshot.recognizedText, referenceDate: createdAt)
+                return (verification, classification)
+            }.value
+            guard record.contentRevision == revision else { return } // pages changed mid-flight; the next run redoes it
+            try library.setVerification(verification, for: record)
+            try library.setClassification(classification, for: record)
+            for warning in verification.warnings where !record.ignoredWarningKeys.contains(warning.key) {
+                Telemetry.record(.qualityWarningShown(type: warning.telemetryType, confidence: .medium, pageIndex: warning.pageIndex ?? 0))
+            }
+        } catch {
+            // Verification is advisory; OCR results already saved.
+        }
     }
 
     private func recognize(_ page: PageRecord) async {

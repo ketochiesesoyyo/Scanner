@@ -15,7 +15,7 @@ public enum TelemetryEvent: Sendable {
     public enum Mode: String, Sendable { case document, receipt, id, book, whiteboard, photo }
     public enum CaptureMethod: String, Sendable { case auto, manual, imported }
     public enum Band: String, Sendable { case high, medium, low }
-    public enum WarningType: String, Sendable { case blur, glare, shadow, crop, perspective, readability, duplicate, sequence }
+    public enum WarningType: String, Sendable { case blur, glare, shadow, crop, perspective, readability, duplicate, sequence, smudge }
     public enum WarningAction: String, Sendable { case recapture, edit, ignore }
     public enum LanguageTag: String, Sendable { case es, en, mixed, other }
     public enum DocumentClass: String, Sendable { case unknown, receipt, invoice, id, contract, form, letter, notes, other }

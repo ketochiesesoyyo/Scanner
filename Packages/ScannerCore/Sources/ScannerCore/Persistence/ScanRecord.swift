@@ -17,6 +17,13 @@ public final class ScanRecord {
     public var updatedAt: Date
     public var sourceRaw: String
     public var stateRaw: String
+    /// Bumped only when content changes (pages, recognition) — verification staleness tracks this,
+    /// so renaming a scan doesn't trigger a re-verify.
+    public var contentRevision: Int = 0
+    @Attribute(.externalStorage) public var verificationData: Data? = nil
+    @Attribute(.externalStorage) public var classificationData: Data? = nil
+    /// Keys of warnings the user chose to ignore (QLT-02: warn, let the user decide).
+    public var ignoredWarningKeys: [String] = []
     @Relationship(deleteRule: .cascade, inverse: \PageRecord.document)
     public var pages: [PageRecord] = []
 
@@ -40,6 +47,26 @@ public final class ScanRecord {
     }
 
     public var orderedPages: [PageRecord] { pages.sorted { $0.index < $1.index } }
+
+    public var verification: VerificationResult? {
+        verificationData.flatMap { try? JSONDecoder().decode(VerificationResult.self, from: $0) }
+    }
+
+    public var classification: ClassificationResult? {
+        classificationData.flatMap { try? JSONDecoder().decode(ClassificationResult.self, from: $0) }
+    }
+
+    public var isVerificationStale: Bool {
+        verification.map { $0.contentRevision != contentRevision } ?? true
+    }
+
+    /// Warnings still standing after the user's ignores.
+    public var activeWarnings: [ScanWarning] {
+        (verification?.warnings ?? []).filter { !ignoredWarningKeys.contains($0.key) }
+    }
+
+    /// True while the title is the automatic one — the only case where a suggestion is offered.
+    public var hasDefaultTitle: Bool { title.hasPrefix("Scan ") }
     public var isFullyRecognized: Bool { pages.allSatisfy { $0.recognitionData != nil } }
     public var recognizedPageCount: Int { pages.filter { $0.recognitionData != nil }.count }
 }

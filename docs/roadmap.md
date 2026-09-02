@@ -26,22 +26,22 @@ their data is. Nothing leaves the device.
 
 Definition of done for M1: all boxes ticked, tests green, `docs/mvp-plan.md` §5 rows for CAP-04, EXP-01, EXP-02, Privacy, Library, Recovery marked implemented.
 
-## Now → M2 · Verification & understanding
+## Done → M2 · Verification & understanding (2026-09-01; M2.7 corpus expansion remains open)
 
 Goal: the app tells you when a scan is not good enough or incomplete, and suggests what it is.
 
 | # | Task | Who | Acceptance criterion |
 |---|------|-----|----------------------|
-| [~] M2.1 | `QualityScorer` in `Recognition`: blur (Laplacian variance), glare (% clipped highlights), shadow (luma gradient), readability (share of low-confidence OCR words) (QLT-01) | ketochi · Claude | Scores computed per page off-main; unit tests with synthetic blurred/glared fixtures. |
-| [~] M2.2 | Per-class thresholds + `QualityWarning` model; iOS 26 `DetectLensSmudgeRequest` behind `#available` | ketochi · Claude | Warnings fire on the bad fixtures, not on the clean ones. |
-| [~] M2.3 | Duplicate pages via `GenerateImageFeaturePrintRequest` distance; page-sequence check from OCR ("3 de 7", "Page 3 of 7") (QLT-02) | ketochi · Claude | Duplicate fixture flagged; reordered fixture flagged; never auto-deleted or reordered. |
-| [~] M2.4 | **Verification summary** on Review: page count, flagged pages with reason, one tap to the page; non-color indicators (§9 Accessibility) | ketochi · Claude | VoiceOver reads each warning; ignoring a warning is possible and logged as `quality_warning_resolved(ignore)`. |
-| [~] M2.5 | `DocumentClassifier` (rule-based): Mexico-first vocabulary (RFC, CURP, INE, CFDI/factura, recibo, comprobante de domicilio, acta, contrato, nómina) + English; `NSDataDetector` for dates/amounts (CLS-01) | ketochi · Claude | Fixture set of 20 rendered docs classified ≥ 80% correctly; output is a suggestion the user can change. |
-| [~] M2.6 | Filename + title suggestion `{type}-{party}-{yyyy-MM-dd}`; editable before export | ketochi · Claude | Suggested name appears on Review; export uses the edited name. |
-| [~] M2.7 | Fixture corpus: ~50 rendered pages across sizes/fonts/rotations with expected labels under `Tests/Fixtures/` (§14) | ketochi · Claude | Corpus documented in `Tests/README.md`; no real personal documents. |
-| [~] M2.8 | iOS 26 `RecognizeDocumentsRequest` spike: does document structure improve classification? (spike 5) | ketochi · Claude | Short write-up appended to this file under "Learnings". |
+| [x] M2.1 | `QualityScorer` in `Recognition`: blur (Laplacian variance), glare (% clipped highlights), shadow (luma gradient), readability (share of low-confidence OCR words) (QLT-01) | ketochi · Claude | Scores computed per page off-main; unit tests with synthetic blurred/glared fixtures.<br>_Done: `QualityAnalyzer` (Laplacian blur variance, clipped-highlight glare ratio, 85th-percentile block shadow spread, low-confidence OCR share) on a 512 px gray working copy, off-main. Synthetic fixture values: sharp 1705 vs blurred 6 variance._ |
+| [x] M2.2 | Per-class thresholds + `QualityWarning` model; iOS 26 `DetectLensSmudgeRequest` behind `#available` | ketochi · Claude | Warnings fire on the bad fixtures, not on the clean ones.<br>_Done: `QualityThresholds.standard` tuned on the synthetic fixtures; warnings fire on the bad fixtures and stay quiet on clean ones (tests). iOS 26 `DetectLensSmudgeRequest` wired behind `#available`. Real per-class thresholds still need the device corpus (M3+)._ |
+| [x] M2.3 | Duplicate pages via `GenerateImageFeaturePrintRequest` distance; page-sequence check from OCR ("3 de 7", "Page 3 of 7") (QLT-02) | ketochi · Claude | Duplicate fixture flagged; reordered fixture flagged; never auto-deleted or reordered.<br>_Done: duplicates via `GenerateImageFeaturePrintRequest` distance with a 9×8 dHash fallback (the neural runtime is absent on the Simulator and can fail on device); page-number sequence parsing ("Página 3 de 7", "Page 3 of 7", "3/7", not dates) → missing/out-of-order warnings. Warn only, never auto-fix._ |
+| [x] M2.4 | **Verification summary** on Review: page count, flagged pages with reason, one tap to the page; non-color indicators (§9 Accessibility) | ketochi · Claude | VoiceOver reads each warning; ignoring a warning is possible and logged as `quality_warning_resolved(ignore)`.<br>_Done: verification summary on Review (warnings link to their page, Ignore is persisted per warning key and logged as `quality_warning_resolved(ignore)`); orange badge + "needs attention" text on page cards (non-color); per-page warnings with Ignore on Page detail; footnote near export. VoiceOver labels combined per row._ |
+| [x] M2.5 | `DocumentClassifier` (rule-based): Mexico-first vocabulary (RFC, CURP, INE, CFDI/factura, recibo, comprobante de domicilio, acta, contrato, nómina) + English; `NSDataDetector` for dates/amounts (CLS-01) | ketochi · Claude | Fixture set of 20 rendered docs classified ≥ 80% correctly; output is a suggestion the user can change.<br>_Done: rule-based `DocumentClassifier` (Mexico-first vocabulary + English), folded matching with word boundaries; party from the top lines; document date via Spanish/dd-mm-yyyy regexes with NSDataDetector fallback. 24-sample corpus ≥ 80% in tests. Create ML upgrade waits for the consented corpus._ |
+| [x] M2.6 | Filename + title suggestion `{type}-{party}-{yyyy-MM-dd}`; editable before export | ketochi · Claude | Suggested name appears on Review; export uses the edited name.<br>_Done: "Suggested: {Kind} – {party} – {yyyy-MM-dd}" chip on Review with a Use button — offered only while the title is still the automatic one; renaming never re-verifies (contentRevision vs updatedAt split)._ |
+| [~] M2.7 | Fixture corpus: ~50 rendered pages across sizes/fonts/rotations with expected labels under `Tests/Fixtures/` (§14) | ketochi · Claude | Corpus documented in `Tests/README.md`; no real personal documents.<br>_Partially done: 24 labeled classifier texts + rendered blur/glare/shadow/duplicate/sequence pages, all generated in `Tests/ScannerTests` (no committed images, no real documents). The ~50-page corpus across fonts/rotations and per-class thresholds still owed — expand alongside M3's real-capture testing._ |
+| [x] M2.8 | iOS 26 `RecognizeDocumentsRequest` spike: does document structure improve classification? (spike 5) | ketochi · Claude | Short write-up appended to this file under "Learnings".<br>_Done (spike): see Learnings — structure comes through (4 paragraphs on the fixture), ~1.5× slower than plain OCR._ |
 
-## Next → M3 · Real capture (replaces the VisionKit stand-in)
+## Now → M3 · Real capture (replaces the VisionKit stand-in)
 
 Goal: CAP-01 and CAP-04 for real — live guidance, auto-capture, untouched originals.
 
@@ -89,6 +89,19 @@ Goal: CAP-01 and CAP-04 for real — live guidance, auto-capture, untouched orig
 - [x] Tests: 6 passing — searchable-PDF alignment within 3% (spike 1 ✅), OCR round trip, presets, page sizing.
 
 ## Learnings
+
+- **M2.8 spike — iOS 26 `RecognizeDocumentsRequest`**: on the factura fixture it returns the full
+  transcript plus structure (4 paragraphs; tables/lists when present) in ~1.5 s vs ~1.0 s for plain
+  `RecognizeTextRequest` (Simulator timings). Worth adopting behind `#available` for receipt/table
+  extraction (P1) — not as the default OCR path, since word-level boxes for the PDF text layer come
+  from `RecognizeTextRequest` anyway. API shape: `observation.document.text.transcript`,
+  `.document.tables/.paragraphs/.lists`.
+- **Neural Vision requests don't run on the Simulator**: `GenerateImageFeaturePrintRequest` (and
+  smudge detection) fail with "Failed to create espresso context". Duplicate detection therefore has a
+  9×8 dHash fallback (cutoff hamming ≤ 2; two *different* text pages measured 5) that also covers
+  exact re-imports on device. Verify the feature-print path on hardware in M3.
+- **Verification staleness is content-based** (`contentRevision`), not `updatedAt` — renaming a scan
+  (e.g. accepting the suggested title) must not trigger a re-verify of every page.
 
 - **Spike 1 (searchable PDF)**: CoreText `CTLineDraw` with `setTextDrawingMode(.invisible)` produces a text
   layer PDFKit can find and select; sizing the font so ascent+descent = box height and stretching the

@@ -1,5 +1,6 @@
 import SwiftUI
 import ScannerCore
+import Telemetry
 import DesignSystem
 
 struct PageDetailView: View {
@@ -8,6 +9,16 @@ struct PageDetailView: View {
     @Environment(Library.self) private var library
     @Environment(RecognitionQueue.self) private var queue
     @State private var image: CGImage?
+
+    private var pageWarnings: [ScanWarning] {
+        (page.document?.activeWarnings ?? []).filter { $0.pageIndex == page.index }
+    }
+
+    private func ignore(_ warning: ScanWarning) {
+        guard let record = page.document else { return }
+        try? library.ignoreWarning(warning.key, in: record)
+        Telemetry.record(.qualityWarningResolved(type: warning.telemetryType, action: .ignore))
+    }
 
     var body: some View {
         ScrollView {
@@ -45,6 +56,27 @@ struct PageDetailView: View {
                             .buttonStyle(.bordered)
                     } else {
                         ProgressView("Reading text…")
+                    }
+                }
+                let warnings = pageWarnings
+                if !warnings.isEmpty {
+                    VStack(alignment: .leading, spacing: DS.Spacing.s) {
+                        Text("Warnings").font(.headline)
+                        ForEach(warnings, id: \.key) { warning in
+                            HStack(alignment: .firstTextBaseline, spacing: DS.Spacing.s) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundStyle(.orange)
+                                    .accessibilityHidden(true)
+                                Text(warning.message(pageCount: page.document?.pages.count ?? 0))
+                                    .font(.subheadline)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                Button("Ignore") { ignore(warning) }
+                                    .font(.subheadline)
+                                    .buttonStyle(.plain)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .accessibilityElement(children: .combine)
+                        }
                     }
                 }
                 ProcessingBadge()

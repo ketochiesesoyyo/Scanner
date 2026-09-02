@@ -61,6 +61,7 @@ public final class Library {
         page.document = record
         context.insert(page)
         record.updatedAt = .now
+        record.contentRevision += 1
         try context.save()
         return page
     }
@@ -74,6 +75,25 @@ public final class Library {
     public func setRecognition(_ recognition: PageRecognition, for page: PageRecord) throws {
         page.recognition = recognition
         page.document?.updatedAt = .now
+        page.document?.contentRevision += 1
+        try context.save()
+    }
+
+    /// Deliberately does not bump `updatedAt`/`contentRevision`: verification describes content,
+    /// it isn't content.
+    public func setVerification(_ result: VerificationResult, for record: ScanRecord) throws {
+        record.verificationData = try JSONEncoder().encode(result)
+        try context.save()
+    }
+
+    public func setClassification(_ result: ClassificationResult, for record: ScanRecord) throws {
+        record.classificationData = try JSONEncoder().encode(result)
+        try context.save()
+    }
+
+    public func ignoreWarning(_ key: String, in record: ScanRecord) throws {
+        guard !record.ignoredWarningKeys.contains(key) else { return }
+        record.ignoredWarningKeys.append(key)
         try context.save()
     }
 
