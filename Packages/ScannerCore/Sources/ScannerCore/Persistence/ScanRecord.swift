@@ -10,7 +10,10 @@ public enum ScanState: String, Sendable, Codable {
 /// A scan in the local library. Pages and their files are owned by the record (cascade delete).
 @Model
 public final class ScanRecord {
-    @Attribute(.unique) public var id: UUID
+    // NOT @Attribute(.unique): ids are UUIDs we generate, so the constraint adds nothing — and on
+    // iOS 18, unique constraints + relationships hit a SwiftData bug that remaps identifiers during
+    // save and crashes ("fatal logic error in DefaultStore" / "This store went missing?").
+    public var id: UUID
     public var title: String
     public var createdAt: Date
     /// Bumped on every change (pages, recognition, title) — used as a cheap cache/version key.
@@ -73,7 +76,8 @@ public final class ScanRecord {
 
 @Model
 public final class PageRecord {
-    @Attribute(.unique) public var id: UUID
+    // Not unique either — see the note on ScanRecord.id.
+    public var id: UUID
     public var index: Int
     public var originalPath: String
     public var thumbnailPath: String

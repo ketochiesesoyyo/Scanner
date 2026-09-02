@@ -134,7 +134,13 @@ Goal: CAP-01 and CAP-04 for real — live guidance, auto-capture, untouched orig
   gesture gate timed out"); completed scans now wait in `pendingPush` until the cover's `onDismiss`.
   Also moved off the main thread: upright rendering of full-res camera pages and the multi-MB original
   file writes in `Library.addPage` (write-ahead order unchanged). Test on the oldest supported iOS
-  before calling a milestone done.
+  before calling a milestone done. (4) Second iOS 18 SwiftData crash (Photos-import path this time):
+  `@Attribute(.unique)` on model ids + relationships triggers "remapped to a temporary identifier
+  during save — fatal logic error in DefaultStore" / "This store went missing?" on iOS 18. The unique
+  constraints are removed — ids are app-generated UUIDs, so they added nothing. Rule of thumb from
+  this device pass: on iOS 18, keep SwiftData models boring — insert before relating, no unique
+  constraints, saves only on the main context. Also: under the Xcode debugger a fatalError *pauses*
+  the app rather than quitting it, which reads as a freeze on the phone.
 
 ## Open questions (for the owner)
 
