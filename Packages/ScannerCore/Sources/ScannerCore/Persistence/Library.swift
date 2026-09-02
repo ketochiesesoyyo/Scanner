@@ -1,70 +1,58 @@
+import CoreGraphics
 import Foundation
 import Observation
-import SwiftData
 
-/// The local library: SwiftData records + `FileStore` files, all on the main actor.
-///
-/// Write-ahead by construction: `addPage` writes the files first, then inserts and saves the record, so
-/// a crash between pages loses at most the page being written, and any `ScanRecord` still in
-/// `.capturing` on the next launch is a session to resume (PRD §9 Reliability).
+/// The local library, backed by plain files — no SwiftData, no database contexts, no detachable
+/// model objects. Each scan is a directory holding page images, thumbnails, and a `scan.json`. The
+/// in-memory `records` array is the source of truth for the UI; every mutation rewrites the affected
+/// `scan.json` atomically. This behaves identically on device and in tests (it is only Foundation
+/// file I/O), which the SwiftData version did not.
 @MainActor @Observable
 public final class Library {
     public enum Failure: LocalizedError {
-        case pageIndexUnavailable
-        public var errorDescription: String? { "Couldn't add the page to this scan." }
+        case scanNotFound
+        public var errorDescription: String? { "That scan is no longer available." }
     }
 
-    public let container: ModelContainer
     public let files: FileStore
+    /// Newest first. Reassigned wholesale on every change so SwiftUI observation fires.
+    public private(set) var records: [ScanRecord] = []
 
-    public var context: ModelContext { container.mainContext }
-
-    /// Model objects handed around the app can be detached on device (modelContext == nil). Every
-    /// mutation re-fetches a context-attached instance by id so the write actually persists.
-    private func attached(_ record: ScanRecord) -> ScanRecord {
-        if record.modelContext === context { return record }
-        let id = record.id
-        return ((try? context.fetch(FetchDescriptor<ScanRecord>())) ?? []).first { $0.id == id } ?? record
-    }
-
-    private func attached(_ page: PageRecord) -> PageRecord {
-        if page.modelContext === context { return page }
-        let id = page.id
-        return ((try? context.fetch(FetchDescriptor<PageRecord>())) ?? []).first { $0.id == id } ?? page
-    }
-
-    public init(container: ModelContainer, files: FileStore) {
-        self.container = container
+    public init(files: FileStore) {
         self.files = files
-        context.autosaveEnabled = false
-        ActiveStore.context = context
+        self.records = Self.loadAll(from: files).sorted { $0.updatedAt > $1.updatedAt }
     }
 
-    /// The app's persistent library: Application Support/Scanner/{Library.store, Documents/}.
-    /// The file store is created first so the directory exists before SwiftData opens the database.
+    /// The app's persistent library under Application Support.
     public static func live() throws -> Library {
-        let files = try FileStore.live()
-        // v2: a clean store file. Today's repeated schema changes (relationship → foreign key, added
-        // attributes) can leave the old "Library.store" half-migrated and silently empty on iOS 18.
-        let storeURL = files.root.deletingLastPathComponent().appending(path: "Library-v2.store")
-        let configuration = ModelConfiguration("ScannerLibrary", schema: Self.schema, url: storeURL)
-        return Library(container: try ModelContainer(for: Self.schema, configurations: [configuration]), files: files)
+        Library(files: try FileStore.live())
     }
 
-    /// In-memory records with files under `filesRoot` — for tests and previews.
+    /// A library rooted at a throwaway directory — for tests and previews.
     public static func ephemeral(filesRoot: URL) throws -> Library {
-        let configuration = ModelConfiguration("ScannerLibraryEphemeral", schema: Self.schema, isStoredInMemoryOnly: true)
-        return Library(container: try ModelContainer(for: Self.schema, configurations: [configuration]), files: try FileStore(root: filesRoot))
+        Library(files: try FileStore(root: filesRoot))
     }
 
-    public static let schema = Schema([ScanRecord.self, PageRecord.self])
+    // MARK: Lookups
 
-    // MARK: Capture
+    public func record(id: UUID) -> ScanRecord? { records.first { $0.id == id } }
+    public func allRecords() -> [ScanRecord] { records }
+
+    /// Sessions interrupted mid-capture, newest first. Empty drafts are cleaned up on the way.
+    public func recoverableDrafts() -> [ScanRecord] {
+        var recoverable: [ScanRecord] = []
+        for record in records where record.state == .capturing {
+            if record.pages.isEmpty { try? delete(record) } else { recoverable.append(record) }
+        }
+        return recoverable
+    }
+
+    // MARK: Capture (write-ahead: files hit disk before the record is persisted)
 
     public func createDraft(source: CaptureSource, title: String? = nil) throws -> ScanRecord {
         let record = ScanRecord(title: title ?? Self.defaultTitle(for: .now), source: source)
-        context.insert(record)
-        try context.save()
+        try persist(record)
+        upsert(record)
         return record
     }
 
@@ -73,130 +61,127 @@ public final class Library {
         let pageID = UUID()
         let recordID = record.id
         let files = files
-        // Multi-megabyte originals must not be written on the main actor. Files still hit disk
-        // before the database row exists — the write-ahead order is unchanged.
+        // Multi-megabyte writes never touch the main actor.
         let paths = try await Task.detached(priority: .userInitiated) {
             (original: try files.writeOriginal(assets.originalData, extension: assets.originalExtension, document: recordID, page: pageID),
              thumbnail: try files.writeThumbnail(assets.thumbnailData, document: recordID, page: pageID))
         }.value
-        let originalPath = paths.original
-        let thumbnailPath = paths.thumbnail
-        let index = (record.pages.map(\.index).max() ?? -1) + 1
-        // No relationship is wired — the foreign key is set at init, so this insert+save carries no
-        // relationship bookkeeping for iOS 18's SwiftData to trip over (the source of all four crashes).
-        let page = PageRecord(id: pageID, documentID: record.id, index: index, originalPath: originalPath, thumbnailPath: thumbnailPath, pixelSize: assets.pixelSize)
-        context.insert(page)
-        let owner = attached(record)
-        owner.updatedAt = .now
-        owner.contentRevision += 1
-        try context.save()
-        #if DEBUG
-        print("PHASE addPage: record.modelContext isNil=\(record.modelContext == nil) sameAsLibrary=\(record.modelContext === context); record.pages.count=\(record.pages.count)")
-        #endif
+
+        var current = self.record(id: recordID) ?? record
+        let index = (current.pages.map(\.index).max() ?? -1) + 1
+        let page = PageRecord(id: pageID, index: index, originalPath: paths.original, thumbnailPath: paths.thumbnail, pixelSize: assets.pixelSize)
+        current.pages.append(page)
+        current.updatedAt = .now
+        current.contentRevision += 1
+        try save(current)
         return page
     }
 
     public func finishCapture(_ record: ScanRecord) throws {
-        let record = attached(record)
-        record.state = .ready
-        record.updatedAt = .now
-        try context.save()
+        try mutate(record.id) { $0.state = .ready; $0.updatedAt = .now }
     }
 
-    public func setRecognition(_ recognition: PageRecognition, for page: PageRecord) throws {
-        let page = attached(page)
-        page.recognition = recognition
-        if let record = ((try? context.fetch(FetchDescriptor<ScanRecord>())) ?? []).first(where: { $0.id == page.documentID }) {
+    public func setRecognition(_ recognition: PageRecognition, forPage pageID: UUID, inScan scanID: UUID) throws {
+        try mutate(scanID) { record in
+            guard let index = record.pages.firstIndex(where: { $0.id == pageID }) else { return }
+            record.pages[index].recognition = recognition
             record.updatedAt = .now
             record.contentRevision += 1
         }
-        try context.save()
     }
 
-    /// Deliberately does not bump `updatedAt`/`contentRevision`: verification describes content,
-    /// it isn't content.
-    public func setVerification(_ result: VerificationResult, for record: ScanRecord) throws {
-        attached(record).verificationData = try JSONEncoder().encode(result)
-        try context.save()
+    /// Verification/classification describe content; they deliberately do not bump contentRevision.
+    public func setVerification(_ result: VerificationResult, forScan scanID: UUID) throws {
+        try mutate(scanID) { $0.verification = result }
     }
 
-    public func setClassification(_ result: ClassificationResult, for record: ScanRecord) throws {
-        attached(record).classificationData = try JSONEncoder().encode(result)
-        try context.save()
+    public func setClassification(_ result: ClassificationResult, forScan scanID: UUID) throws {
+        try mutate(scanID) { $0.classification = result }
     }
 
-    public func ignoreWarning(_ key: String, in record: ScanRecord) throws {
-        let record = attached(record)
-        guard !record.ignoredWarningKeys.contains(key) else { return }
-        record.ignoredWarningKeys.append(key)
-        try context.save()
+    public func ignoreWarning(_ key: String, inScan scanID: UUID) throws {
+        try mutate(scanID) { record in
+            guard !record.ignoredWarningKeys.contains(key) else { return }
+            record.ignoredWarningKeys.append(key)
+        }
     }
-
-    // MARK: Library management
 
     public func rename(_ record: ScanRecord, to title: String) throws {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        let record = attached(record)
-        record.title = trimmed
-        record.updatedAt = .now
-        try context.save()
+        try mutate(record.id) { $0.title = trimmed; $0.updatedAt = .now }
     }
+
+    // MARK: Library management
 
     public func delete(_ record: ScanRecord) throws {
         try files.removeDocument(record.id)
-        let record = attached(record)
-        // Cascade by hand — there is no relationship delete rule any more.
-        for page in record.pages { context.delete(attached(page)) }
-        context.delete(record)
-        try context.save()
+        records.removeAll { $0.id == record.id }
     }
 
     public func deleteEverything() throws {
-        for page in try context.fetch(FetchDescriptor<PageRecord>()) { context.delete(page) }
-        for record in try allRecords() { context.delete(record) }
-        try context.save()
+        records = []
         try files.removeAll()
     }
 
-    public func allRecords() throws -> [ScanRecord] {
-        try context.fetch(FetchDescriptor<ScanRecord>(sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]))
-    }
+    // MARK: Snapshots for OCR/export (pages decode lazily from disk, one at a time)
 
-    /// Sessions interrupted mid-capture, newest first. Empty drafts are cleaned up on the way.
-    public func recoverableDrafts() throws -> [ScanRecord] {
-        let capturing = ScanState.capturing.rawValue
-        let drafts = try context.fetch(FetchDescriptor<ScanRecord>(
-            predicate: #Predicate { $0.stateRaw == capturing },
-            sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
-        ))
-        var recoverable: [ScanRecord] = []
-        for draft in drafts {
-            if draft.pages.isEmpty { try delete(draft) } else { recoverable.append(draft) }
-        }
-        return recoverable
-    }
-
-    /// Pages that still need OCR (e.g. the app was killed while reading text).
-    public func pagesAwaitingRecognition() throws -> [PageRecord] {
-        try allRecords().flatMap { $0.orderedPages.filter { $0.recognitionData == nil } }
-    }
-
-    // MARK: Snapshots
-
-    /// A `Sendable` value view of a record for export and recognition. Page images are decoded lazily
-    /// from disk, one at a time.
     public func snapshot(_ record: ScanRecord) -> ScanDocument {
-        let pages = record.orderedPages.map { page in
+        let current = self.record(id: record.id) ?? record
+        let pages = current.orderedPages.map { page in
             let url = files.url(for: page.originalPath)
             return ScanPage(id: page.id, pixelSize: page.pixelSize, recognition: page.recognition) {
                 try ImageDecoder.image(at: url)
             }
         }
-        return ScanDocument(id: record.id, title: record.title, pages: pages, source: record.source, createdAt: record.createdAt)
+        return ScanDocument(id: current.id, title: current.title, pages: pages, source: current.source, createdAt: current.createdAt)
     }
 
     public static func defaultTitle(for date: Date) -> String {
         "Scan \(date.formatted(date: .abbreviated, time: .shortened))"
     }
+
+    // MARK: Persistence internals
+
+    private func mutate(_ id: UUID, _ change: (inout ScanRecord) -> Void) throws {
+        guard var record = self.record(id: id) else { throw Failure.scanNotFound }
+        change(&record)
+        try save(record)
+    }
+
+    private func save(_ record: ScanRecord) throws {
+        try persist(record)
+        upsert(record)
+    }
+
+    /// Replaces (or inserts) the record in the in-memory list, keeping it newest-first.
+    private func upsert(_ record: ScanRecord) {
+        var updated = records.filter { $0.id != record.id }
+        updated.append(record)
+        records = updated.sorted { $0.updatedAt > $1.updatedAt }
+    }
+
+    private func persist(_ record: ScanRecord) throws {
+        let data = try Self.encoder.encode(record)
+        try files.writeMetadata(data, document: record.id)
+    }
+
+    private static func loadAll(from files: FileStore) -> [ScanRecord] {
+        files.documentIDs().compactMap { id in
+            guard let data = try? files.readMetadata(document: id) else { return nil }
+            return try? decoder.decode(ScanRecord.self, from: data)
+        }
+    }
+
+    private static let encoder: JSONEncoder = {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        return encoder
+    }()
+
+    private static let decoder: JSONDecoder = {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
+    }()
 }

@@ -76,11 +76,12 @@ final class CaptureCoordinator {
                 Telemetry.record(.pageCaptured(method: item.telemetryMethod, mode: .document, qualityBand: nil, processingLatencyMs: 0))
             }
             try library.finishCapture(record)
+            let finished = library.record(id: record.id) ?? record
             #if DEBUG
-            print("PHASE ingest done: \(record.pages.count) page(s) saved")
+            print("PHASE ingest done: \(finished.pages.count) page(s) saved")
             #endif
-            queue.process(record)
-            return record
+            queue.process(finished.id)
+            return finished
         } catch {
             errorMessage = error.localizedDescription
             return nil

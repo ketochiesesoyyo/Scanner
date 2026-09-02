@@ -123,6 +123,18 @@ Goal: CAP-01 and CAP-04 for real — live guidance, auto-capture, untouched orig
   (badge below text), Settings (badge in footer + plain-language data section). Camera permission and
   Face ID strings say why and that nothing is uploaded.
 
+## ✅ Resolved (2026-09-01): SwiftData removed entirely
+
+After ~10 rounds of device-only SwiftData failures (detached model objects: `record.modelContext`
+nil on device, faulting-attribute crashes, reads returning 0 rows — all invisible to simulator tests),
+the persistence layer was **replaced with a plain file store**. `ScanRecord`/`PageRecord` are now
+value structs (Codable); each scan is a directory with page images + a `scan.json`; `Library` is an
+`@Observable` holding the records in memory and rewriting JSON atomically on every change. No database,
+no contexts, no `@Model`/`@Query`/`.modelContainer`, no detachment. Because it is only Foundation file
+I/O, tests behave identically to the device — the LibraryTests now reload from disk in a fresh Library,
+which is exactly what broke before. The whole "iOS 18"/SwiftData saga in the notes below is now moot;
+kept only as history. Navigation is by UUID (`ReviewView(scanID:)`, `PageRef`), not model identity.
+
 ## ⚠️ Correction (2026-09-01): these were NOT iOS 18 bugs
 
 The owner's test iPhone runs **iOS 26**, the same as the simulator the tests use. So the distinguishing

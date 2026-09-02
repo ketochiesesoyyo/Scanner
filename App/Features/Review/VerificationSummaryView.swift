@@ -36,6 +36,7 @@ extension ScanWarning {
 /// PRD §7 step 6: the verification summary. Warnings link to their page and can be ignored —
 /// never auto-fixed (QLT-02).
 struct VerificationSummaryView: View {
+    let scanID: UUID
     let record: ScanRecord
     let pages: [PageRecord]
     let isWorking: Bool
@@ -70,10 +71,9 @@ struct VerificationSummaryView: View {
             Text(warning.message(pageCount: pages.count))
                 .font(.subheadline)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            if let index = warning.pageIndex, pages.indices.contains(index) {
-                NavigationLink(value: pages[index]) {
-                    Text("View")
-                        .font(.subheadline.weight(.medium))
+            if let index = warning.pageIndex, let page = pages.first(where: { $0.index == index }) {
+                NavigationLink(value: PageRef(scanID: scanID, pageID: page.id)) {
+                    Text("View").font(.subheadline.weight(.medium))
                 }
                 .accessibilityLabel("View page \(index + 1)")
             }

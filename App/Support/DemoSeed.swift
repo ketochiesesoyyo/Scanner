@@ -33,7 +33,7 @@ enum DemoSeed {
                 try await library.addPage(try PageIngest.prepare(image: render(lines)), to: record)
             }
             try library.finishCapture(record)
-            queue.process(record)
+            queue.process(record.id)
         } catch {
             assertionFailure("Demo seed failed: \(error)")
         }

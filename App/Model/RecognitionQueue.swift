@@ -4,8 +4,9 @@ import ScannerCore
 import Recognition
 import Telemetry
 
-/// Runs OCR for pages that don't have it yet, one page at a time per record, off the main actor.
-/// Results are saved as they land, so a kill mid-way resumes where it stopped (`resumePending`).
+/// Runs OCR for pages that don't have it yet, one page at a time per scan, off the main actor.
+/// It always re-reads the current record from the library (records are value snapshots), so results
+/// saved mid-run are picked up and a kill mid-way resumes where it stopped (`resumePending`).
 @MainActor @Observable
 final class RecognitionQueue {
     private(set) var inFlight: Set<UUID> = []
@@ -18,33 +19,32 @@ final class RecognitionQueue {
         self.library = library
     }
 
-    func isBusy(_ record: ScanRecord) -> Bool { tasks[record.id] != nil }
+    func isBusy(_ scanID: UUID) -> Bool { tasks[scanID] != nil }
 
-    func process(_ record: ScanRecord) {
-        guard tasks[record.id] == nil else { return }
-        let recordID = record.id
-        tasks[recordID] = Task { [weak self] in
+    func process(_ scanID: UUID) {
+        guard tasks[scanID] == nil else { return }
+        tasks[scanID] = Task { [weak self] in
             guard let self else { return }
             while !Task.isCancelled {
-                // Recomputed each round so pages added while we're reading are picked up too.
-                guard let page = record.orderedPages.first(where: { $0.recognitionData == nil && !failed.contains($0.id) }) else { break }
-                await recognize(page)
+                guard let record = library.record(id: scanID),
+                      let page = record.orderedPages.first(where: { !$0.isRecognized && !failed.contains($0.id) }) else { break }
+                await recognize(page, inScan: scanID)
             }
-            await verifyIfNeeded(record)
-            tasks[recordID] = nil
+            await verifyIfNeeded(scanID)
+            tasks[scanID] = nil
         }
     }
 
     /// Pages left without text by an earlier run (app killed while reading).
     func resumePending() {
-        for record in (try? library.allRecords()) ?? [] where record.state == .ready && !record.isFullyRecognized {
-            process(record)
+        for record in library.allRecords() where record.state == .ready && !record.isFullyRecognized {
+            process(record.id)
         }
     }
 
-    func retry(_ page: PageRecord) {
-        failed.remove(page.id)
-        if let record = page.document { process(record) }
+    func retry(pageID: UUID, inScan scanID: UUID) {
+        failed.remove(pageID)
+        process(scanID)
     }
 
     func cancelAll() {
@@ -53,10 +53,10 @@ final class RecognitionQueue {
         inFlight = []
     }
 
-    /// Quality gate + classification (QLT-01/02, CLS-01), run after OCR settles. Best-effort:
-    /// a failure here never blocks the scan.
-    private func verifyIfNeeded(_ record: ScanRecord) async {
-        guard record.state == .ready, !record.pages.isEmpty, record.isVerificationStale, !Task.isCancelled else { return }
+    /// Quality gate + classification (QLT-01/02, CLS-01), after OCR settles. Best-effort.
+    private func verifyIfNeeded(_ scanID: UUID) async {
+        guard let record = library.record(id: scanID),
+              record.state == .ready, !record.pages.isEmpty, record.isVerificationStale, !Task.isCancelled else { return }
         let snapshot = library.snapshot(record)
         let revision = record.contentRevision
         let createdAt = record.createdAt
@@ -74,21 +74,21 @@ final class RecognitionQueue {
             #if DEBUG
             print("PHASE verify done: \(verification.warnings.count) warning(s)")
             #endif
-            guard record.contentRevision == revision else { return } // pages changed mid-flight; the next run redoes it
-            try library.setVerification(verification, for: record)
-            try library.setClassification(classification, for: record)
-            for warning in verification.warnings where !record.ignoredWarningKeys.contains(warning.key) {
+            guard library.record(id: scanID)?.contentRevision == revision else { return } // pages changed; next run redoes it
+            try library.setVerification(verification, forScan: scanID)
+            try library.setClassification(classification, forScan: scanID)
+            let ignored = library.record(id: scanID)?.ignoredWarningKeys ?? []
+            for warning in verification.warnings where !ignored.contains(warning.key) {
                 Telemetry.record(.qualityWarningShown(type: warning.telemetryType, confidence: .medium, pageIndex: warning.pageIndex ?? 0))
             }
         } catch {
-            // Verification is advisory; OCR results already saved.
             #if DEBUG
             print("PHASE verify FAILED: \(error)")
             #endif
         }
     }
 
-    private func recognize(_ page: PageRecord) async {
+    private func recognize(_ page: PageRecord, inScan scanID: UUID) async {
         inFlight.insert(page.id)
         defer { inFlight.remove(page.id) }
         let url = library.files.url(for: page.originalPath)
@@ -100,7 +100,7 @@ final class RecognitionQueue {
             let result = try await Task.detached(priority: .userInitiated) {
                 try await recognizer.recognize(try ImageDecoder.image(at: url))
             }.value
-            try library.setRecognition(result, for: page)
+            try library.setRecognition(result, forPage: page.id, inScan: scanID)
             Telemetry.record(.ocrCompleted(
                 language: .es,
                 documentClass: .unknown,

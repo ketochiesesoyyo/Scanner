@@ -1,20 +1,24 @@
 import SwiftUI
-import SwiftData
 import ScannerCore
 import DesignSystem
+
+/// Identifies a page across navigation without carrying a value snapshot (which changes as OCR lands).
+struct PageRef: Hashable {
+    let scanID: UUID
+    let pageID: UUID
+}
 
 struct HomeView: View {
     @Environment(Library.self) private var library
     @Environment(RecognitionQueue.self) private var queue
-    @Query(sort: \ScanRecord.updatedAt, order: .reverse) private var records: [ScanRecord]
 
     @State private var capture = CaptureCoordinator()
     @State private var path = NavigationPath()
     @State private var showingSettings = false
-    @State private var interrupted: [ScanRecord] = []
     @State private var errorMessage: String?
 
-    private var ready: [ScanRecord] { records.filter { $0.state == .ready } }
+    private var ready: [ScanRecord] { library.records.filter { $0.state == .ready } }
+    private var interrupted: [ScanRecord] { library.records.filter { $0.state == .capturing && !$0.pages.isEmpty } }
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -33,28 +37,24 @@ struct HomeView: View {
             .navigationTitle("Scanner")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showingSettings = true
-                    } label: {
+                    Button { showingSettings = true } label: {
                         Label("Settings", systemImage: "gearshape")
                     }
                 }
             }
-            .navigationDestination(for: ScanRecord.self) { ReviewView(record: $0) }
-            .navigationDestination(for: PageRecord.self) { PageDetailView(page: $0) }
+            .navigationDestination(for: UUID.self) { ReviewView(scanID: $0) }
+            .navigationDestination(for: PageRef.self) { PageDetailView(ref: $0) }
             .sheet(isPresented: $showingSettings) { SettingsView() }
-            .captureHost(capture) { record in path.append(record) }
+            .captureHost(capture) { record in path.append(record.id) }
             .task {
-                refreshInterrupted()
+                _ = library.recoverableDrafts() // prunes empty drafts on launch
                 queue.resumePending()
                 #if DEBUG
-                // `-openFirstScan` jumps straight into Review — for Simulator screenshots.
                 if ProcessInfo.processInfo.arguments.contains("-openFirstScan"), let first = ready.first, path.isEmpty {
-                    path.append(first)
+                    path.append(first.id)
                 }
                 #endif
             }
-            .onChange(of: records.count) { refreshInterrupted() }
             .alert("Something went wrong", isPresented: errorPresented) {
                 Button("OK", role: .cancel) {}
             } message: {
@@ -66,11 +66,9 @@ struct HomeView: View {
     private var libraryList: some View {
         List {
             if !interrupted.isEmpty {
-                Section {
+                Section("Interrupted") {
                     ForEach(interrupted) { draft in
-                        Button {
-                            path.append(draft)
-                        } label: {
+                        NavigationLink(value: draft.id) {
                             Label {
                                 VStack(alignment: .leading) {
                                     Text("Continue \"\(draft.title)\"")
@@ -83,13 +81,11 @@ struct HomeView: View {
                             }
                         }
                     }
-                } header: {
-                    Text("Interrupted")
                 }
             }
             Section {
                 ForEach(ready) { record in
-                    NavigationLink(value: record) {
+                    NavigationLink(value: record.id) {
                         LibraryRow(record: record, thumbnailURL: record.orderedPages.first.map { library.files.url(for: $0.thumbnailPath) })
                     }
                 }
@@ -107,10 +103,6 @@ struct HomeView: View {
         } catch {
             errorMessage = error.localizedDescription
         }
-    }
-
-    private func refreshInterrupted() {
-        interrupted = (try? library.recoverableDrafts()) ?? []
     }
 
     private var errorPresented: Binding<Bool> {

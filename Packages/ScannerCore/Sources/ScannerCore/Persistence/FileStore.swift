@@ -39,6 +39,25 @@ public struct FileStore: Sendable {
         do { return try Data(contentsOf: url(for: relativePath)) } catch { throw Failure.unreadable(relativePath) }
     }
 
+    // MARK: Per-scan metadata (scan.json)
+
+    public func writeMetadata(_ data: Data, document: UUID) throws {
+        try write(data, to: "\(document.uuidString)/scan.json")
+    }
+
+    public func readMetadata(document: UUID) throws -> Data {
+        try read("\(document.uuidString)/scan.json")
+    }
+
+    /// Scan directories present on disk (each is a document UUID). Used to load the library at launch.
+    public func documentIDs() -> [UUID] {
+        let contents = (try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
+        return contents.compactMap { url in
+            guard (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true else { return nil }
+            return UUID(uuidString: url.lastPathComponent)
+        }
+    }
+
     public func removePage(originalPath: String, thumbnailPath: String) throws {
         for path in [originalPath, thumbnailPath] {
             let url = url(for: path)

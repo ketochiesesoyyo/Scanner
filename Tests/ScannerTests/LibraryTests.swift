@@ -1,26 +1,20 @@
 import Testing
 import Foundation
-import SwiftData
 import PDFKit
 import ScannerCore
 import ImagePipeline
 import Recognition
 import Export
 
-/// M1.1 / M1.2: originals round-trip byte for byte, and an interrupted session survives a relaunch.
+/// M1.1 / M1.2 on the file-based store: originals round-trip byte for byte, and an interrupted session
+/// survives a "relaunch" (a fresh Library over the same directory). No SwiftData — behaves the same on
+/// device and here, which the previous model layer did not.
 @MainActor
 struct LibraryTests {
     private static func temporaryDirectory() -> URL {
         let url = FileManager.default.temporaryDirectory.appending(path: "LibraryTests-\(UUID().uuidString)", directoryHint: .isDirectory)
         try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url
-    }
-
-    /// A library over an on-disk store, so "relaunching" is opening a second one at the same paths.
-    private static func openLibrary(in directory: URL) throws -> Library {
-        let configuration = ModelConfiguration("LibraryTests", schema: Library.schema, url: directory.appending(path: "library.store"))
-        let container = try ModelContainer(for: Library.schema, configurations: [configuration])
-        return Library(container: container, files: try FileStore(root: directory.appending(path: "files", directoryHint: .isDirectory)))
     }
 
     @Test func originalsRoundTripByteForByte() async throws {
@@ -37,7 +31,8 @@ struct LibraryTests {
         }
         try library.finishCapture(record)
 
-        let reloaded = try #require(try library.allRecords().first)
+        // A fresh Library reloads the same directory from scan.json.
+        let reloaded = try #require(try Library.ephemeral(filesRoot: directory).allRecords().first)
         #expect(reloaded.state == .ready)
         #expect(reloaded.orderedPages.count == 3)
         for (index, page) in reloaded.orderedPages.enumerated() {
@@ -56,15 +51,15 @@ struct LibraryTests {
         defer { try? FileManager.default.removeItem(at: directory) }
 
         do {
-            let library = try Self.openLibrary(in: directory)
+            let library = try Library.ephemeral(filesRoot: directory)
             let draft = try library.createDraft(source: .documentCamera)
             try await library.addPage(try PageIngest.prepare(image: Fixtures.page(lines: ["uno"])), to: draft)
             try await library.addPage(try PageIngest.prepare(image: Fixtures.page(lines: ["dos"])), to: draft)
             // No finishCapture: the process "dies" here.
         }
 
-        let relaunched = try Self.openLibrary(in: directory)
-        let drafts = try relaunched.recoverableDrafts()
+        let relaunched = try Library.ephemeral(filesRoot: directory)
+        let drafts = relaunched.recoverableDrafts()
         #expect(drafts.count == 1)
         let draft = try #require(drafts.first)
         #expect(draft.state == .capturing)
@@ -80,8 +75,8 @@ struct LibraryTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let library = try Library.ephemeral(filesRoot: directory)
         _ = try library.createDraft(source: .files)
-        #expect(try library.recoverableDrafts().isEmpty)
-        #expect(try library.allRecords().isEmpty)
+        #expect(library.recoverableDrafts().isEmpty)
+        #expect(library.allRecords().isEmpty)
     }
 
     @Test func deleteRemovesRecordAndFiles() async throws {
@@ -95,7 +90,7 @@ struct LibraryTests {
         #expect(FileManager.default.fileExists(atPath: documentDirectory.path))
 
         try library.delete(record)
-        #expect(try library.allRecords().isEmpty)
+        #expect(library.allRecords().isEmpty)
         #expect(!FileManager.default.fileExists(atPath: documentDirectory.path))
     }
 
@@ -109,7 +104,7 @@ struct LibraryTests {
             try library.finishCapture(record)
         }
         try library.deleteEverything()
-        #expect(try library.allRecords().isEmpty)
+        #expect(library.allRecords().isEmpty)
         #expect(library.files.totalSize() == 0)
     }
 
@@ -123,9 +118,13 @@ struct LibraryTests {
         try library.finishCapture(record)
 
         let recognition = try await TextRecognizer().recognize(image)
-        try library.setRecognition(recognition, for: page)
-        #expect(page.recognition?.text.localizedCaseInsensitiveContains("NACIMIENTO") == true)
-        #expect(page.confidenceBand != nil)
+        try library.setRecognition(recognition, forPage: page.id, inScan: record.id)
+
+        // Reload to prove it persisted to scan.json.
+        let reloaded = try #require(try Library.ephemeral(filesRoot: directory).record(id: record.id))
+        let reloadedPage = try #require(reloaded.orderedPages.first)
+        #expect(reloadedPage.recognition?.text.localizedCaseInsensitiveContains("NACIMIENTO") == true)
+        #expect(reloadedPage.confidenceBand != nil)
 
         let snapshot = library.snapshot(record)
         #expect(snapshot.pages.count == 1)
@@ -133,5 +132,20 @@ struct LibraryTests {
         let export = try SearchablePDFBuilder(preset: .standard).build(snapshot)
         let pdf = try #require(PDFDocument(data: export.data))
         #expect(pdf.findString("NACIMIENTO", withOptions: .caseInsensitive).count == 1)
+    }
+
+    @Test func contentRevisionTracksContentNotRenames() async throws {
+        let directory = Self.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let library = try Library.ephemeral(filesRoot: directory)
+        var record = try library.createDraft(source: .files)
+        try await library.addPage(try PageIngest.prepare(image: Fixtures.page(lines: ["a"])), to: record)
+        record = try #require(library.record(id: record.id))
+        let revisionAfterPage = record.contentRevision
+
+        try library.rename(record, to: "New title")
+        let renamed = try #require(library.record(id: record.id))
+        #expect(renamed.title == "New title")
+        #expect(renamed.contentRevision == revisionAfterPage, "rename must not bump contentRevision")
     }
 }

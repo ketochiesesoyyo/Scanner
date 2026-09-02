@@ -1,5 +1,4 @@
 import SwiftUI
-import SwiftData
 import ScannerCore
 import Telemetry
 
@@ -38,7 +37,6 @@ struct ScannerApp: App {
                     .environment(library)
                     .environment(queue)
                     .environment(exporter)
-                    .modelContainer(library.container)
                     .modifier(LockGate())
             case .failed(let message):
                 ContentUnavailableView {

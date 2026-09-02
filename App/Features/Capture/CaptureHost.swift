@@ -8,7 +8,7 @@ import DesignSystem
 /// Attaches the camera cover, the Photos picker, progress and errors for one `CaptureCoordinator`.
 struct CaptureHost: ViewModifier {
     @Bindable var capture: CaptureCoordinator
-    let target: ScanRecord?
+    let targetScanID: UUID?
     let onCompleted: (ScanRecord) -> Void
 
     @Environment(Library.self) private var library
@@ -74,7 +74,8 @@ struct CaptureHost: ViewModifier {
     }
 
     private func ingest(_ items: [CaptureCoordinator.Item], source: CaptureSource) async {
-        guard let record = await capture.ingest(items, source: source, into: target, library: library, queue: queue) else { return }
+        let existing = targetScanID.flatMap { library.record(id: $0) }
+        guard let record = await capture.ingest(items, source: source, into: existing, library: library, queue: queue) else { return }
         switch source {
         case .photoLibrary, .files:
             // These pickers give no dismissal callback, and pushing while their sheet is still
@@ -102,8 +103,8 @@ struct CaptureHost: ViewModifier {
 }
 
 extension View {
-    func captureHost(_ capture: CaptureCoordinator, target: ScanRecord? = nil, onCompleted: @escaping (ScanRecord) -> Void) -> some View {
-        modifier(CaptureHost(capture: capture, target: target, onCompleted: onCompleted))
+    func captureHost(_ capture: CaptureCoordinator, targetScanID: UUID? = nil, onCompleted: @escaping (ScanRecord) -> Void) -> some View {
+        modifier(CaptureHost(capture: capture, targetScanID: targetScanID, onCompleted: onCompleted))
     }
 }
 
