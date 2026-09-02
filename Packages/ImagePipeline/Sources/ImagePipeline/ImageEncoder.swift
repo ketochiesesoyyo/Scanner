@@ -23,7 +23,9 @@ public enum ImageEncoder {
     }
 
     public static func jpeg(_ image: CGImage, maxLongSide: Int?, quality: Double) throws -> EncodedImage {
-        let source = try downscaled(image, maxLongSide: maxLongSide)
+        // Draw through an opaque context so the JPEG has no alpha channel (JPEG can't store one anyway;
+        // passing an alpha-bearing CGImage just logs a warning and wastes memory).
+        let source = try opaque(try downscaled(image, maxLongSide: maxLongSide))
         let data = NSMutableData()
         guard let destination = CGImageDestinationCreateWithData(data, UTType.jpeg.identifier as CFString, 1, nil) else {
             throw ImageEncodingError.destinationUnavailable
@@ -36,6 +38,24 @@ public enum ImageEncoder {
             throw ImageEncodingError.decodingFailed
         }
         return EncodedImage(image: decoded, data: data as Data)
+    }
+
+    /// Redraws onto an opaque white background when the image carries alpha; returns it as-is otherwise.
+    static func opaque(_ image: CGImage) throws -> CGImage {
+        switch image.alphaInfo {
+        case .none, .noneSkipFirst, .noneSkipLast:
+            return image
+        default:
+            guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB),
+                  let context = CGContext(
+                    data: nil, width: image.width, height: image.height, bitsPerComponent: 8, bytesPerRow: 0,
+                    space: colorSpace, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+                  ) else { return image }
+            context.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+            context.fill(CGRect(x: 0, y: 0, width: image.width, height: image.height))
+            context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+            return context.makeImage() ?? image
+        }
     }
 
     /// Returns the input untouched when it already fits.

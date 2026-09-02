@@ -59,10 +59,14 @@ public final class ScanRecord {
     /// Pages are looked up by foreign key, NOT a SwiftData relationship: every iOS 18 crash this
     /// project has hit ("remapped to a temporary identifier", "This store went missing?") came from
     /// relationship bookkeeping during saves. A plain ID sidesteps that machinery entirely.
+    ///
+    /// Filtering is done in Swift, not with a #Predicate: on iOS 18 a UUID-equality predicate silently
+    /// matches nothing (works on iOS 26 — the LibraryTests passed there while the device saw 0 pages).
+    /// Libraries are small, so fetch-all-then-filter costs nothing and can't be wrong.
     public var pages: [PageRecord] {
         let id = id
-        let descriptor = FetchDescriptor<PageRecord>(predicate: #Predicate { $0.documentID == id })
-        return (try? modelContext?.fetch(descriptor)) ?? []
+        let all = (try? modelContext?.fetch(FetchDescriptor<PageRecord>())) ?? []
+        return all.filter { $0.documentID == id }
     }
 
     public var orderedPages: [PageRecord] { pages.sorted { $0.index < $1.index } }
@@ -105,12 +109,11 @@ public final class PageRecord {
     @Attribute(.externalStorage) public var recognitionData: Data?
     public var confidenceBandRaw: String?
 
-    /// The owning record, resolved by foreign key.
+    /// The owning record, resolved by foreign key (filtered in Swift — see the note on ScanRecord.pages).
     public var document: ScanRecord? {
         let id = documentID
-        var descriptor = FetchDescriptor<ScanRecord>(predicate: #Predicate { $0.id == id })
-        descriptor.fetchLimit = 1
-        return try? modelContext?.fetch(descriptor).first
+        let all = (try? modelContext?.fetch(FetchDescriptor<ScanRecord>())) ?? []
+        return all.first { $0.id == id }
     }
 
     public init(id: UUID = UUID(), documentID: UUID, index: Int, originalPath: String, thumbnailPath: String, pixelSize: CGSize) {
