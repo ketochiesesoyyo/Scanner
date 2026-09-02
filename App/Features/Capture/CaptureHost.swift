@@ -64,9 +64,22 @@ struct CaptureHost: ViewModifier {
 
     private func ingest(_ items: [CaptureCoordinator.Item], source: CaptureSource) async {
         guard let record = await capture.ingest(items, source: source, into: target, library: library, queue: queue) else { return }
-        if source == .documentCamera && !capture.cameraDismissed {
+        switch source {
+        case .documentCamera where !capture.cameraDismissed:
             capture.pendingPush = record // onDismiss pushes once the cover is gone
-        } else {
+        case .photoLibrary:
+            // The photos picker gives no dismissal callback, and pushing while its sheet is still
+            // animating away wedges the transition on device (dead touches, spinners keep moving).
+            // A fast single-photo ingest can finish before the animation does — let it settle.
+            try? await Task.sleep(for: .milliseconds(800))
+            #if DEBUG
+            print("PHASE push review (photos)")
+            #endif
+            onCompleted(record)
+        default:
+            #if DEBUG
+            print("PHASE push review (\(source.rawValue))")
+            #endif
             onCompleted(record)
         }
     }

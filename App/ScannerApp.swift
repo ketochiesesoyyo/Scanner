@@ -16,6 +16,7 @@ struct ScannerApp: App {
     init() {
         #if DEBUG
         Telemetry.use(LogSink())
+        HangWatchdog.shared.start()
         #endif
         do {
             let library = try Library.live()

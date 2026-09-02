@@ -61,6 +61,9 @@ final class CaptureCoordinator {
                 Telemetry.record(.scanSessionStarted(entryPoint: .app, proposedMode: .document))
             }
             let method: TelemetryEvent.CaptureMethod = source == .documentCamera ? .auto : .imported
+            #if DEBUG
+            print("PHASE ingest start: \(items.count) item(s) from \(source.rawValue)")
+            #endif
             for (index, item) in items.enumerated() {
                 progress = items.count > 1 ? "Saving page \(index + 1) of \(items.count)…" : "Saving page…"
                 let assets = try await Task.detached(priority: .userInitiated) { try item.prepare() }.value
@@ -68,6 +71,9 @@ final class CaptureCoordinator {
                 Telemetry.record(.pageCaptured(method: method, mode: .document, qualityBand: nil, processingLatencyMs: 0))
             }
             try library.finishCapture(record)
+            #if DEBUG
+            print("PHASE ingest done: \(record.pages.count) page(s) saved")
+            #endif
             queue.process(record)
             return record
         } catch {

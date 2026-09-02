@@ -68,6 +68,9 @@ final class RecognitionQueue {
                 let classification = classifier.classify(text: snapshot.recognizedText, referenceDate: createdAt)
                 return (verification, classification)
             }.value
+            #if DEBUG
+            print("PHASE verify done: \(verification.warnings.count) warning(s)")
+            #endif
             guard record.contentRevision == revision else { return } // pages changed mid-flight; the next run redoes it
             try library.setVerification(verification, for: record)
             try library.setClassification(classification, for: record)
@@ -76,6 +79,9 @@ final class RecognitionQueue {
             }
         } catch {
             // Verification is advisory; OCR results already saved.
+            #if DEBUG
+            print("PHASE verify FAILED: \(error)")
+            #endif
         }
     }
 
@@ -84,6 +90,9 @@ final class RecognitionQueue {
         defer { inFlight.remove(page.id) }
         let url = library.files.url(for: page.originalPath)
         let recognizer = recognizer
+        #if DEBUG
+        print("PHASE ocr start: page \(page.index)")
+        #endif
         do {
             let result = try await Task.detached(priority: .userInitiated) {
                 try await recognizer.recognize(try ImageDecoder.image(at: url))
@@ -96,6 +105,9 @@ final class RecognitionQueue {
                 latencyMs: Int(result.duration / .milliseconds(1))
             ))
         } catch {
+            #if DEBUG
+            print("PHASE ocr FAILED: page \(page.index): \(error)")
+            #endif
             failed.insert(page.id)
         }
     }
