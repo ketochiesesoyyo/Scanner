@@ -1,6 +1,13 @@
 import Foundation
 import SwiftData
 
+/// The app has exactly one live store. On a physical device a model's own `modelContext` can come back
+/// nil right after a save (works in the simulator, which is why unit tests never caught it), so reads
+/// fall back to this. Set by `Library`; accessed only on the main actor in practice.
+public enum ActiveStore {
+    nonisolated(unsafe) public static weak var context: ModelContext?
+}
+
 public enum ScanState: String, Sendable, Codable {
     /// Pages are still arriving. A record left in this state is a recoverable session (PRD §9 Reliability).
     case capturing
@@ -65,7 +72,8 @@ public final class ScanRecord {
     /// Libraries are small, so fetch-all-then-filter costs nothing and can't be wrong.
     public var pages: [PageRecord] {
         let id = id
-        let all = (try? modelContext?.fetch(FetchDescriptor<PageRecord>())) ?? []
+        let store = modelContext ?? ActiveStore.context
+        let all = (try? store?.fetch(FetchDescriptor<PageRecord>())) ?? []
         return all.filter { $0.documentID == id }
     }
 
@@ -112,7 +120,8 @@ public final class PageRecord {
     /// The owning record, resolved by foreign key (filtered in Swift — see the note on ScanRecord.pages).
     public var document: ScanRecord? {
         let id = documentID
-        let all = (try? modelContext?.fetch(FetchDescriptor<ScanRecord>())) ?? []
+        let store = modelContext ?? ActiveStore.context
+        let all = (try? store?.fetch(FetchDescriptor<ScanRecord>())) ?? []
         return all.first { $0.id == id }
     }
 

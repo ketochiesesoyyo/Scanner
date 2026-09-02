@@ -23,6 +23,7 @@ public final class Library {
         self.container = container
         self.files = files
         context.autosaveEnabled = false
+        ActiveStore.context = context
     }
 
     /// The app's persistent library: Application Support/Scanner/{Library.store, Documents/}.
@@ -75,9 +76,7 @@ public final class Library {
         record.contentRevision += 1
         try context.save()
         #if DEBUG
-        let stored = (try? context.fetch(FetchDescriptor<PageRecord>())) ?? []
-        let mine = stored.filter { $0.documentID == record.id }
-        print("PHASE addPage: saved page \(page.id) docID=\(page.documentID); store now holds \(stored.count) page row(s), \(mine.count) for this scan (recordID=\(record.id))")
+        print("PHASE addPage: record.modelContext isNil=\(record.modelContext == nil) sameAsLibrary=\(record.modelContext === context); record.pages.count=\(record.pages.count)")
         #endif
         return page
     }
