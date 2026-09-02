@@ -1,5 +1,6 @@
 import SwiftUI
 import PhotosUI
+import UniformTypeIdentifiers
 import ScannerCore
 import CaptureKit
 import DesignSystem
@@ -39,6 +40,18 @@ struct CaptureHost: ViewModifier {
                 .ignoresSafeArea()
             }
             .photosPicker(isPresented: $capture.showingPhotoPicker, selection: $capture.pickerItems, maxSelectionCount: 25, matching: .images)
+            .fileImporter(isPresented: $capture.showingFileImporter, allowedContentTypes: [.pdf, .image], allowsMultipleSelection: true) { result in
+                guard case .success(let urls) = result, !urls.isEmpty else { return } // cancel is normal
+                Task {
+                    let (items, problems) = await Task.detached { CaptureCoordinator.loadItems(from: urls) }.value
+                    if let problem = problems.first { capture.errorMessage = problem }
+                    guard !items.isEmpty else { return }
+                    #if DEBUG
+                    print("PHASE files load: \(items.count) page(s) from \(urls.count) file(s)")
+                    #endif
+                    await ingest(items, source: .files)
+                }
+            }
             .onChange(of: capture.pickerItems) { _, items in
                 guard !items.isEmpty else { return }
                 Task {
@@ -68,13 +81,13 @@ struct CaptureHost: ViewModifier {
     private func ingest(_ items: [CaptureCoordinator.Item], source: CaptureSource) async {
         guard let record = await capture.ingest(items, source: source, into: target, library: library, queue: queue) else { return }
         switch source {
-        case .photoLibrary:
-            // The photos picker gives no dismissal callback, and pushing while its sheet is still
+        case .photoLibrary, .files:
+            // These pickers give no dismissal callback, and pushing while their sheet is still
             // animating away wedges the transition on device (dead touches, spinners keep moving).
-            // A fast single-photo ingest can finish before the animation does — let it settle.
+            // A fast ingest can finish before the animation does — let it settle.
             try? await Task.sleep(for: .milliseconds(800))
             #if DEBUG
-            print("PHASE push review (photos)")
+            print("PHASE push review (\(source.rawValue))")
             #endif
             onCompleted(record)
         default:
@@ -115,11 +128,19 @@ struct CaptureButtons: View {
             .controlSize(.large)
             .disabled(!DocumentCameraView.isSupported)
 
-            Button {
-                capture.showingPhotoPicker = true
-            } label: {
-                Label("Import from Photos", systemImage: "photo.on.rectangle")
-                    .frame(maxWidth: .infinity)
+            HStack(spacing: DS.Spacing.s) {
+                Button {
+                    capture.showingPhotoPicker = true
+                } label: {
+                    Label("Photos", systemImage: "photo.on.rectangle")
+                        .frame(maxWidth: .infinity)
+                }
+                Button {
+                    capture.showingFileImporter = true
+                } label: {
+                    Label("Files", systemImage: "folder")
+                        .frame(maxWidth: .infinity)
+                }
             }
             .buttonStyle(.bordered)
             .controlSize(.large)

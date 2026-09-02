@@ -154,6 +154,13 @@ Goal: CAP-01 and CAP-04 for real — live guidance, auto-capture, untouched orig
   a fresh column. Also seen on iOS 18: benign-but-noisy
   "remapped to a temporary identifier" logs on save — non-fatal since the unique constraints went.
   On-device numbers from this run: OCR 656 ms/page; verification found 2 warnings on a real capture.
+- **First real-capture calibration (owner's device)**: the glare warning fired on an actual reflection
+  (not a false positive) and the owner judged the warnings fair — first field validation of the
+  synthetic thresholds (M2.7).
+- **Extras shipped on owner request (2026-09-01)**: Files import on Home and Review — images verbatim,
+  PDFs rasterized per page (CGPDFDocument, 2480 px, 50-page cap) into the normal pipeline; and a
+  recognized-text preview sheet (Review menu, and a Preview button when the Text format is selected)
+  so users see exactly what text would be shared before sharing it.
 
 ## Open questions (for the owner)
 

@@ -1,6 +1,7 @@
 import SwiftUI
 import ScannerCore
 import CaptureKit
+import Export
 import Telemetry
 import DesignSystem
 
@@ -21,6 +22,7 @@ struct ReviewView: View {
     @State private var estimate: Int?
     @State private var shareItems: ShareItems?
     @State private var filesItems: ShareItems?
+    @State private var showingTextPreview = false
     @State private var renaming = false
     @State private var draftTitle = ""
     @State private var errorMessage: String?
@@ -58,7 +60,10 @@ struct ReviewView: View {
                     Button("Scan more pages", systemImage: "camera.viewfinder") { capture.showingCamera = true }
                         .disabled(!DocumentCameraView.isSupported)
                     Button("Add from Photos", systemImage: "photo.on.rectangle") { capture.showingPhotoPicker = true }
+                    Button("Add from Files", systemImage: "folder") { capture.showingFileImporter = true }
                     Divider()
+                    Button("View recognized text", systemImage: "text.viewfinder") { showingTextPreview = true }
+                        .disabled(isReading)
                     Button("Rename", systemImage: "pencil") {
                         draftTitle = record.title
                         renaming = true
@@ -73,6 +78,9 @@ struct ReviewView: View {
             TextField("Title", text: $draftTitle)
             Button("Save") { rename() }
             Button("Cancel", role: .cancel) {}
+        }
+        .sheet(isPresented: $showingTextPreview) {
+            TextPreviewView(title: record.title, text: TextExporter.text(library.snapshot(record)))
         }
         .sheet(item: $shareItems) { items in
             ShareSheet(items: items.urls)
@@ -161,6 +169,11 @@ struct ReviewView: View {
                 }
                 .pickerStyle(.menu)
                 .fixedSize()
+                if kind == .text {
+                    Button("Preview") { showingTextPreview = true }
+                        .font(.subheadline.weight(.medium))
+                        .disabled(isReading)
+                }
                 Spacer()
                 Text(estimateText)
                     .font(.footnote)
