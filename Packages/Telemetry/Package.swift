@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "Telemetry",
-    platforms: [.iOS(.v18), .macOS(.v15)],
+    platforms: [.iOS("26.0"), .macOS(.v15)],
     products: [
         .library(name: "Telemetry", targets: ["Telemetry"])
     ],

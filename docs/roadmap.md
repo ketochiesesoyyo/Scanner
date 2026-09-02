@@ -123,6 +123,16 @@ Goal: CAP-01 and CAP-04 for real — live guidance, auto-capture, untouched orig
   (badge below text), Settings (badge in footer + plain-language data section). Camera permission and
   Face ID strings say why and that nothing is uploaded.
 
+## ⚠️ Correction (2026-09-01): these were NOT iOS 18 bugs
+
+The owner's test iPhone runs **iOS 26**, the same as the simulator the tests use. So the distinguishing
+factor in every "device crash" below was **real hardware vs. the simulator**, not the OS version — the
+"iOS 18" attributions in the learnings are wrong. Root cause is how the app wires SwiftData together with
+SwiftUI's `@Query`/`.modelContainer` and manual saves on a real device (temp-identifier remapping, and a
+just-saved page reading back as 0 rows). Deployment target has been raised to **iOS 26**; the SwiftData
+layer is being simplified now that only iOS 26 is supported. Keep the notes below for the specific
+symptoms, but read "iOS 18" as "on device".
+
 - **Device pass findings (2026-09-01, iPhone on iOS 18)**: two bugs the iOS 26 Simulator never showed.
   (1) SwiftData: wiring a relationship on a model *before* `context.insert` crashes iOS 18's store on
   the next save ("remapped to a temporary identifier … fatal logic error in DefaultStore") — always

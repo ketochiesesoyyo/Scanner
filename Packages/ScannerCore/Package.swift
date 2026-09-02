@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "ScannerCore",
-    platforms: [.iOS(.v18), .macOS(.v15)],
+    platforms: [.iOS("26.0"), .macOS(.v15)],
     products: [
         .library(name: "ScannerCore", targets: ["ScannerCore"])
     ],

@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "ImagePipeline",
-    platforms: [.iOS(.v18), .macOS(.v15)],
+    platforms: [.iOS("26.0"), .macOS(.v15)],
     products: [
         .library(name: "ImagePipeline", targets: ["ImagePipeline"])
     ],
