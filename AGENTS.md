@@ -71,6 +71,8 @@ nothing. Don't add upward or sideways dependencies without a note in the PR.
 
 ## Build, run, test
 
+First time on a fresh Mac? `SETUP.md` at the repo root walks through everything from zero.
+
 ```sh
 brew install xcodegen                                  # once
 cp Config/Local.xcconfig.example Config/Local.xcconfig # once, for device builds; fill in your team
