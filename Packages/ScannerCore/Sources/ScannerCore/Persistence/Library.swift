@@ -29,7 +29,9 @@ public final class Library {
     /// The file store is created first so the directory exists before SwiftData opens the database.
     public static func live() throws -> Library {
         let files = try FileStore.live()
-        let storeURL = files.root.deletingLastPathComponent().appending(path: "Library.store")
+        // v2: a clean store file. Today's repeated schema changes (relationship → foreign key, added
+        // attributes) can leave the old "Library.store" half-migrated and silently empty on iOS 18.
+        let storeURL = files.root.deletingLastPathComponent().appending(path: "Library-v2.store")
         let configuration = ModelConfiguration("ScannerLibrary", schema: Self.schema, url: storeURL)
         return Library(container: try ModelContainer(for: Self.schema, configurations: [configuration]), files: files)
     }
@@ -72,6 +74,11 @@ public final class Library {
         record.updatedAt = .now
         record.contentRevision += 1
         try context.save()
+        #if DEBUG
+        let stored = (try? context.fetch(FetchDescriptor<PageRecord>())) ?? []
+        let mine = stored.filter { $0.documentID == record.id }
+        print("PHASE addPage: saved page \(page.id) docID=\(page.documentID); store now holds \(stored.count) page row(s), \(mine.count) for this scan (recordID=\(record.id))")
+        #endif
         return page
     }
 
