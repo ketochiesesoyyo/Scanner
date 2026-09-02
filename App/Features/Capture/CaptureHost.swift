@@ -18,24 +18,19 @@ struct CaptureHost: ViewModifier {
         content
             .fullScreenCover(isPresented: $capture.showingCamera, onDismiss: {
                 // The cover is now fully gone — only here is it safe to do work and to push.
-                guard let scan = capture.pendingScan else { return }
-                capture.pendingScan = nil
+                guard let pages = capture.pendingCapture, !pages.isEmpty else { return }
+                capture.pendingCapture = nil
                 #if DEBUG
-                print("PHASE camera dismissed; ingesting \(scan.pageCount) page(s)")
+                print("PHASE camera dismissed; ingesting \(pages.count) page(s)")
                 #endif
-                let items = (0..<scan.pageCount).map { CaptureCoordinator.Item.cameraPage(scan, $0) }
+                let items = pages.map { CaptureCoordinator.Item.captured($0.data, auto: $0.auto) }
                 Task { await ingest(items, source: .documentCamera) }
             }) {
-                DocumentCameraView { outcome in
+                CaptureView { pages in
+                    capture.pendingCapture = pages // ingested after onDismiss, off the main thread
                     capture.showingCamera = false
-                    switch outcome {
-                    case .scanned(let scan) where scan.pageCount > 0:
-                        capture.pendingScan = scan // rendered after onDismiss, off the main thread
-                    case .failed(let message):
-                        capture.errorMessage = message
-                    default:
-                        break
-                    }
+                } onCancel: {
+                    capture.showingCamera = false
                 }
                 .ignoresSafeArea()
             }
@@ -126,7 +121,7 @@ struct CaptureButtons: View {
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
-            .disabled(!DocumentCameraView.isSupported)
+            .disabled(!CameraEngine.isAvailable)
 
             HStack(spacing: DS.Spacing.s) {
                 Button {
@@ -145,7 +140,7 @@ struct CaptureButtons: View {
             .buttonStyle(.bordered)
             .controlSize(.large)
 
-            if !DocumentCameraView.isSupported {
+            if !CameraEngine.isAvailable {
                 Text("No camera here (Simulator) — import a photo instead.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)

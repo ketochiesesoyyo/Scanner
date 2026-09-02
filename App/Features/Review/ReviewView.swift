@@ -58,7 +58,7 @@ struct ReviewView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Button("Scan more pages", systemImage: "camera.viewfinder") { capture.showingCamera = true }
-                        .disabled(!DocumentCameraView.isSupported)
+                        .disabled(!CameraEngine.isAvailable)
                     Button("Add from Photos", systemImage: "photo.on.rectangle") { capture.showingPhotoPicker = true }
                     Button("Add from Files", systemImage: "folder") { capture.showingFileImporter = true }
                     Divider()

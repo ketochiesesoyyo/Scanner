@@ -3,7 +3,6 @@ import CoreGraphics
 import Observation
 import PhotosUI
 import SwiftUI
-import UIKit
 import ScannerCore
 import CaptureKit
 import ImagePipeline
@@ -13,7 +12,8 @@ import Telemetry
 @MainActor @Observable
 final class CaptureCoordinator {
     enum Item: Sendable {
-        case cameraPage(DocumentCameraView.CameraScan, Int)
+        /// A page from our camera: the still's bytes verbatim (CAP-04), plus whether auto-capture took it.
+        case captured(Data, auto: Bool)
         case bitmap(CGImage)
         case file(Data)
         /// One page of a PDF picked in Files; the whole PDF's bytes plus the page index.
@@ -23,21 +23,25 @@ final class CaptureCoordinator {
         /// touch the main thread.
         func prepare() throws -> PageAssets {
             switch self {
-            case .cameraPage(let scan, let index):
-                guard let upright = scan.image(at: index).uprightCGImage() else { throw CocoaError(.fileReadCorruptFile) }
-                return try PageIngest.prepare(image: upright)
+            case .captured(let data, _): return try PageIngest.prepare(imageData: data)
             case .bitmap(let image): return try PageIngest.prepare(image: image)
             case .file(let data): return try PageIngest.prepare(imageData: data)
             case .pdfPage(let data, let index): return try PageIngest.prepare(image: PDFRasterizer.image(from: data, pageIndex: index))
             }
         }
+
+        var telemetryMethod: TelemetryEvent.CaptureMethod {
+            switch self {
+            case .captured(_, let auto): auto ? .auto : .manual
+            case .bitmap, .file, .pdfPage: .imported
+            }
+        }
     }
 
     var showingCamera = false
-    /// A finished camera session, parked until the cover's dismissal completes. Nothing is rendered
-    /// or ingested before then — doing so on the main thread mid-animation wedges the transition
-    /// (frozen UI, dead touches, a sliver of the camera left on screen).
-    var pendingScan: DocumentCameraView.CameraScan?
+    /// Pages from a finished camera session, parked until the cover's dismissal completes. Nothing
+    /// is ingested before then — main-thread work mid-animation wedges the transition.
+    var pendingCapture: [CameraModel.CapturedPage]?
     var showingPhotoPicker = false
     var showingFileImporter = false
     var pickerItems: [PhotosPickerItem] = []
@@ -62,7 +66,6 @@ final class CaptureCoordinator {
                 record = try library.createDraft(source: source)
                 Telemetry.record(.scanSessionStarted(entryPoint: .app, proposedMode: .document))
             }
-            let method: TelemetryEvent.CaptureMethod = source == .documentCamera ? .auto : .imported
             #if DEBUG
             print("PHASE ingest start: \(items.count) item(s) from \(source.rawValue)")
             #endif
@@ -70,7 +73,7 @@ final class CaptureCoordinator {
                 progress = items.count > 1 ? "Saving page \(index + 1) of \(items.count)…" : "Saving page…"
                 let assets = try await Task.detached(priority: .userInitiated) { try item.prepare() }.value
                 try await library.addPage(assets, to: record)
-                Telemetry.record(.pageCaptured(method: method, mode: .document, qualityBand: nil, processingLatencyMs: 0))
+                Telemetry.record(.pageCaptured(method: item.telemetryMethod, mode: .document, qualityBand: nil, processingLatencyMs: 0))
             }
             try library.finishCapture(record)
             #if DEBUG
