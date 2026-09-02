@@ -47,12 +47,12 @@ Goal: CAP-01 and CAP-04 for real — live guidance, auto-capture, untouched orig
 
 | # | Task | Who | Acceptance criterion |
 |---|------|-----|----------------------|
-| [ ] M3.1 | `CaptureKit` AVFoundation session + SwiftUI preview; full-res still capture | | Camera opens ≤ 1.0 s on iPhone XR-class device (§9 Performance). |
-| [ ] M3.2 | Live quad from `DetectDocumentSegmentationRequest` per frame; overlay; stability/framing/lighting gates; **auto-capture** with manual override (CAP-01, spike 2) | | Letter page scans hands-free in normal light without corner correction ≥ 85% of attempts (§11). |
-| [ ] M3.3 | Guidance chips ("move closer", "more light", "hold still", "corner missing") + volume-button shutter (§9 Accessibility) | | Chips are announced by VoiceOver. |
-| [ ] M3.4 | Corner editor + CoreImage perspective correction + filters (color / grayscale / B&W) in `ImagePipeline`; quad and filter stored as parameters, original untouched (CAP-02, CAP-04) | | Re-editing corners regenerates from the original with no generation loss. |
-| [ ] M3.5 | Multi-page session UX: continuous capture, reorder, delete, insert, recapture (CAP-03) | | 25-page document corrected without restarting. |
-| [ ] M3.6 | Remove `DocumentCameraView` stand-in; keep Photos import as an entry point | | No VisionKit camera left in the app target. |
+| [~] M3.1 | `CaptureKit` AVFoundation session + SwiftUI preview; full-res still capture | ketochi · Claude | Camera opens ≤ 1.0 s on iPhone XR-class device (§9 Performance). |
+| [~] M3.2 | Live quad from `DetectDocumentSegmentationRequest` per frame; overlay; stability/framing/lighting gates; **auto-capture** with manual override (CAP-01, spike 2) | ketochi · Claude | Letter page scans hands-free in normal light without corner correction ≥ 85% of attempts (§11). |
+| [~] M3.3 | Guidance chips ("move closer", "more light", "hold still", "corner missing") + volume-button shutter (§9 Accessibility) | ketochi · Claude | Chips are announced by VoiceOver. |
+| [~] M3.4 | Corner editor + CoreImage perspective correction + filters (color / grayscale / B&W) in `ImagePipeline`; quad and filter stored as parameters, original untouched (CAP-02, CAP-04) | ketochi · Claude | Re-editing corners regenerates from the original with no generation loss. |
+| [~] M3.5 | Multi-page session UX: continuous capture, reorder, delete, insert, recapture (CAP-03) | ketochi · Claude | 25-page document corrected without restarting. |
+| [~] M3.6 | Remove `DocumentCameraView` stand-in; keep Photos import as an entry point | ketochi · Claude | No VisionKit camera left in the app target. |
 
 ## Later → M4 · Ship readiness
 
