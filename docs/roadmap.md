@@ -140,7 +140,13 @@ Goal: CAP-01 and CAP-04 for real — live guidance, auto-capture, untouched orig
   constraints are removed — ids are app-generated UUIDs, so they added nothing. Rule of thumb from
   this device pass: on iOS 18, keep SwiftData models boring — insert before relating, no unique
   constraints, saves only on the main context. Also: under the Xcode debugger a fatalError *pauses*
-  the app rather than quitting it, which reads as a freeze on the phone.
+  the app rather than quitting it, which reads as a freeze on the phone. (5) The persistent
+  post-camera freeze (Home visible but dead, a sliver of the camera left at the bottom of the
+  screen): `VNDocumentCameraScan.imageOfPage(at:)` renders the full-res page and was being called for
+  every page on the main thread inside the delegate — right as the cover's dismissal animation needed
+  the main thread to finalize, wedging the transition forever. The scan handle is now parked and pages
+  are rendered off-main, one at a time, only after `onDismiss`. General rule: a presentation delegate
+  callback may do nothing heavier than storing a reference.
 
 ## Open questions (for the owner)
 

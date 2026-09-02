@@ -13,15 +13,16 @@ import Telemetry
 @MainActor @Observable
 final class CaptureCoordinator {
     enum Item: Sendable {
-        case camera(UIImage)
+        case cameraPage(DocumentCameraView.CameraScan, Int)
         case bitmap(CGImage)
         case file(Data)
 
-        /// Runs inside a detached task: orientation baking and JPEG encoding never touch the main thread.
+        /// Runs inside a detached task: page rendering, orientation baking and JPEG encoding never
+        /// touch the main thread.
         func prepare() throws -> PageAssets {
             switch self {
-            case .camera(let image):
-                guard let upright = image.uprightCGImage() else { throw CocoaError(.fileReadCorruptFile) }
+            case .cameraPage(let scan, let index):
+                guard let upright = scan.image(at: index).uprightCGImage() else { throw CocoaError(.fileReadCorruptFile) }
                 return try PageIngest.prepare(image: upright)
             case .bitmap(let image): return try PageIngest.prepare(image: image)
             case .file(let data): return try PageIngest.prepare(imageData: data)
@@ -29,14 +30,11 @@ final class CaptureCoordinator {
         }
     }
 
-    var showingCamera = false {
-        didSet { if showingCamera { cameraDismissed = false } }
-    }
-    /// True once the camera cover's dismissal animation has fully finished. Pushing a navigation
-    /// destination while the cover is still animating away wedges UIKit's transition on device
-    /// (frozen UI, spinners still animating) — so completed scans wait in `pendingPush` until then.
-    var cameraDismissed = true
-    var pendingPush: ScanRecord?
+    var showingCamera = false
+    /// A finished camera session, parked until the cover's dismissal completes. Nothing is rendered
+    /// or ingested before then — doing so on the main thread mid-animation wedges the transition
+    /// (frozen UI, dead touches, a sliver of the camera left on screen).
+    var pendingScan: DocumentCameraView.CameraScan?
     var showingPhotoPicker = false
     var pickerItems: [PhotosPickerItem] = []
     private(set) var isWorking = false

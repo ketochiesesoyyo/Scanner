@@ -16,17 +16,20 @@ struct CaptureHost: ViewModifier {
     func body(content: Content) -> some View {
         content
             .fullScreenCover(isPresented: $capture.showingCamera, onDismiss: {
-                capture.cameraDismissed = true
-                if let record = capture.pendingPush {
-                    capture.pendingPush = nil
-                    onCompleted(record)
-                }
+                // The cover is now fully gone — only here is it safe to do work and to push.
+                guard let scan = capture.pendingScan else { return }
+                capture.pendingScan = nil
+                #if DEBUG
+                print("PHASE camera dismissed; ingesting \(scan.pageCount) page(s)")
+                #endif
+                let items = (0..<scan.pageCount).map { CaptureCoordinator.Item.cameraPage(scan, $0) }
+                Task { await ingest(items, source: .documentCamera) }
             }) {
                 DocumentCameraView { outcome in
                     capture.showingCamera = false
                     switch outcome {
-                    case .scanned(let images) where !images.isEmpty:
-                        Task { await ingest(images.map(CaptureCoordinator.Item.camera), source: .documentCamera) }
+                    case .scanned(let scan) where scan.pageCount > 0:
+                        capture.pendingScan = scan // rendered after onDismiss, off the main thread
                     case .failed(let message):
                         capture.errorMessage = message
                     default:
@@ -65,8 +68,6 @@ struct CaptureHost: ViewModifier {
     private func ingest(_ items: [CaptureCoordinator.Item], source: CaptureSource) async {
         guard let record = await capture.ingest(items, source: source, into: target, library: library, queue: queue) else { return }
         switch source {
-        case .documentCamera where !capture.cameraDismissed:
-            capture.pendingPush = record // onDismiss pushes once the cover is gone
         case .photoLibrary:
             // The photos picker gives no dismissal callback, and pushing while its sheet is still
             // animating away wedges the transition on device (dead touches, spinners keep moving).

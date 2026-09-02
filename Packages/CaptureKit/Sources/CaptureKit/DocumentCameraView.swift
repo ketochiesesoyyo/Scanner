@@ -6,8 +6,26 @@ import ScannerCore
 /// exposes no per-frame signals, so it cannot satisfy CAP-01 (live guidance/auto-capture) or CAP-04
 /// (untouched originals). CaptureKit's own camera replaces it in M3; the rest of the pipeline is unchanged.
 public struct DocumentCameraView: UIViewControllerRepresentable {
+    /// The finished scan, safe to carry across threads: VNDocumentCameraScan is an immutable result
+    /// container (plain NSObject, not main-actor-bound). `image(at:)` renders the full-resolution
+    /// page — call it OFF the main thread: rendering on main during the cover's dismissal is exactly
+    /// what wedged the transition and froze the app on device.
+    public struct CameraScan: @unchecked Sendable {
+        private let scan: VNDocumentCameraScan
+        public let pageCount: Int
+
+        init(_ scan: VNDocumentCameraScan) {
+            self.scan = scan
+            self.pageCount = scan.pageCount
+        }
+
+        public func image(at index: Int) -> UIImage {
+            scan.imageOfPage(at: index)
+        }
+    }
+
     public enum Outcome: Sendable {
-        case scanned([UIImage])
+        case scanned(CameraScan)
         case cancelled
         case failed(String)
     }
@@ -39,10 +57,9 @@ public struct DocumentCameraView: UIViewControllerRepresentable {
         }
 
         public func documentCameraViewController(_ controller: VNDocumentCameraViewController, didFinishWith scan: VNDocumentCameraScan) {
-            // Hand the UIImages over as-is: rendering them upright is expensive at full resolution
-            // and happens off the main thread during ingest, not here during the dismissal animation.
-            let images = (0..<scan.pageCount).map { scan.imageOfPage(at: $0) }
-            onFinish(.scanned(images))
+            // Do NOTHING heavy here: this runs on the main thread right as the dismissal animation
+            // starts. Page images are rendered later, off-main, one at a time.
+            onFinish(.scanned(CameraScan(scan)))
         }
 
         public func documentCameraViewControllerDidCancel(_ controller: VNDocumentCameraViewController) {
