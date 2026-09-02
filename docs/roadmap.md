@@ -129,8 +129,18 @@ The owner's test iPhone runs **iOS 26**, the same as the simulator the tests use
 factor in every "device crash" below was **real hardware vs. the simulator**, not the OS version — the
 "iOS 18" attributions in the learnings are wrong. Root cause is how the app wires SwiftData together with
 SwiftUI's `@Query`/`.modelContainer` and manual saves on a real device (temp-identifier remapping, and a
-just-saved page reading back as 0 rows). Deployment target has been raised to **iOS 26**; the SwiftData
-layer is being simplified now that only iOS 26 is supported. Keep the notes below for the specific
+just-saved page reading back as 0 rows). Deployment target has been raised to **iOS 26**.
+
+**Confirmed root cause (2026-09-01, via diagnostic):** on the physical device, `record.modelContext`
+comes back **nil** — SwiftData hands the app **detached** model objects (works in the simulator, so no
+test caught it). Reads of externally-stored attributes on a detached object crash ("backing data was
+detached from a context without resolving attribute faults"); the earlier "temp identifier remapped" /
+"store went missing" / "0 pages" symptoms were all this same detachment. Fix: `ActiveStore` holds the
+one live context; ScanRecord/PageRecord route every faulting accessor (verification, classification,
+ignoredWarningKeys, recognition, pages) through a re-fetched `live` copy, and every Library mutation
+re-fetches an `attached` instance before writing. Detachment is now harmless. NOTE for the eventual
+cleanup: this is a workaround — the proper fix is to not create the container manually in Library while
+also handing it to SwiftUI's `.modelContainer`; investigate a single-owner container setup later. Keep the notes below for the specific
 symptoms, but read "iOS 18" as "on device".
 
 - **Device pass findings (2026-09-01, iPhone on iOS 18)**: two bugs the iOS 26 Simulator never showed.

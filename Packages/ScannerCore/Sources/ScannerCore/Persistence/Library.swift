@@ -19,6 +19,20 @@ public final class Library {
 
     public var context: ModelContext { container.mainContext }
 
+    /// Model objects handed around the app can be detached on device (modelContext == nil). Every
+    /// mutation re-fetches a context-attached instance by id so the write actually persists.
+    private func attached(_ record: ScanRecord) -> ScanRecord {
+        if record.modelContext === context { return record }
+        let id = record.id
+        return ((try? context.fetch(FetchDescriptor<ScanRecord>())) ?? []).first { $0.id == id } ?? record
+    }
+
+    private func attached(_ page: PageRecord) -> PageRecord {
+        if page.modelContext === context { return page }
+        let id = page.id
+        return ((try? context.fetch(FetchDescriptor<PageRecord>())) ?? []).first { $0.id == id } ?? page
+    }
+
     public init(container: ModelContainer, files: FileStore) {
         self.container = container
         self.files = files
@@ -72,8 +86,9 @@ public final class Library {
         // relationship bookkeeping for iOS 18's SwiftData to trip over (the source of all four crashes).
         let page = PageRecord(id: pageID, documentID: record.id, index: index, originalPath: originalPath, thumbnailPath: thumbnailPath, pixelSize: assets.pixelSize)
         context.insert(page)
-        record.updatedAt = .now
-        record.contentRevision += 1
+        let owner = attached(record)
+        owner.updatedAt = .now
+        owner.contentRevision += 1
         try context.save()
         #if DEBUG
         print("PHASE addPage: record.modelContext isNil=\(record.modelContext == nil) sameAsLibrary=\(record.modelContext === context); record.pages.count=\(record.pages.count)")
@@ -82,31 +97,36 @@ public final class Library {
     }
 
     public func finishCapture(_ record: ScanRecord) throws {
+        let record = attached(record)
         record.state = .ready
         record.updatedAt = .now
         try context.save()
     }
 
     public func setRecognition(_ recognition: PageRecognition, for page: PageRecord) throws {
+        let page = attached(page)
         page.recognition = recognition
-        page.document?.updatedAt = .now
-        page.document?.contentRevision += 1
+        if let record = ((try? context.fetch(FetchDescriptor<ScanRecord>())) ?? []).first(where: { $0.id == page.documentID }) {
+            record.updatedAt = .now
+            record.contentRevision += 1
+        }
         try context.save()
     }
 
     /// Deliberately does not bump `updatedAt`/`contentRevision`: verification describes content,
     /// it isn't content.
     public func setVerification(_ result: VerificationResult, for record: ScanRecord) throws {
-        record.verificationData = try JSONEncoder().encode(result)
+        attached(record).verificationData = try JSONEncoder().encode(result)
         try context.save()
     }
 
     public func setClassification(_ result: ClassificationResult, for record: ScanRecord) throws {
-        record.classificationData = try JSONEncoder().encode(result)
+        attached(record).classificationData = try JSONEncoder().encode(result)
         try context.save()
     }
 
     public func ignoreWarning(_ key: String, in record: ScanRecord) throws {
+        let record = attached(record)
         guard !record.ignoredWarningKeys.contains(key) else { return }
         record.ignoredWarningKeys.append(key)
         try context.save()
@@ -117,6 +137,7 @@ public final class Library {
     public func rename(_ record: ScanRecord, to title: String) throws {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        let record = attached(record)
         record.title = trimmed
         record.updatedAt = .now
         try context.save()
@@ -124,8 +145,9 @@ public final class Library {
 
     public func delete(_ record: ScanRecord) throws {
         try files.removeDocument(record.id)
+        let record = attached(record)
         // Cascade by hand — there is no relationship delete rule any more.
-        for page in record.pages { context.delete(page) }
+        for page in record.pages { context.delete(attached(page)) }
         context.delete(record)
         try context.save()
     }

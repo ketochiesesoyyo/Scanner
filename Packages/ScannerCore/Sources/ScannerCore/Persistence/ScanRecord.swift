@@ -57,9 +57,20 @@ public final class ScanRecord {
         set { stateRaw = newValue.rawValue }
     }
 
+    /// A context-attached copy to read faulting attributes from. On a physical device the record handed
+    /// to the app is often detached (`modelContext == nil`); reading its externally-stored attributes
+    /// then crashes ("backing data was detached from a context without resolving attribute faults").
+    /// Re-fetching a live copy from the one live store makes every read safe.
+    var live: ScanRecord {
+        if modelContext != nil { return self }
+        guard let store = ActiveStore.context else { return self }
+        let id = id
+        return ((try? store.fetch(FetchDescriptor<ScanRecord>())) ?? []).first { $0.id == id } ?? self
+    }
+
     /// Keys of warnings the user chose to ignore (QLT-02: warn, let the user decide). Never nil.
     public var ignoredWarningKeys: [String] {
-        get { ignoredWarningKeysStorage ?? [] }
+        get { live.ignoredWarningKeysStorage ?? [] }
         set { ignoredWarningKeysStorage = newValue }
     }
 
@@ -80,15 +91,16 @@ public final class ScanRecord {
     public var orderedPages: [PageRecord] { pages.sorted { $0.index < $1.index } }
 
     public var verification: VerificationResult? {
-        verificationData.flatMap { try? JSONDecoder().decode(VerificationResult.self, from: $0) }
+        live.verificationData.flatMap { try? JSONDecoder().decode(VerificationResult.self, from: $0) }
     }
 
     public var classification: ClassificationResult? {
-        classificationData.flatMap { try? JSONDecoder().decode(ClassificationResult.self, from: $0) }
+        live.classificationData.flatMap { try? JSONDecoder().decode(ClassificationResult.self, from: $0) }
     }
 
     public var isVerificationStale: Bool {
-        verification.map { $0.contentRevision != contentRevision } ?? true
+        let live = live
+        return live.verification.map { $0.contentRevision != live.contentRevision } ?? true
     }
 
     /// Warnings still standing after the user's ignores.
@@ -137,10 +149,18 @@ public final class PageRecord {
 
     public var pixelSize: CGSize { CGSize(width: pixelWidth, height: pixelHeight) }
 
+    /// See ScanRecord.live — pages detach on device too, and `recognitionData` is external storage.
+    var live: PageRecord {
+        if modelContext != nil { return self }
+        guard let store = ActiveStore.context else { return self }
+        let id = id
+        return ((try? store.fetch(FetchDescriptor<PageRecord>())) ?? []).first { $0.id == id } ?? self
+    }
+
     public var confidenceBand: ConfidenceBand? { confidenceBandRaw.flatMap(ConfidenceBand.init(rawValue:)) }
 
     public var recognition: PageRecognition? {
-        get { recognitionData.flatMap { try? JSONDecoder().decode(PageRecognition.self, from: $0) } }
+        get { live.recognitionData.flatMap { try? JSONDecoder().decode(PageRecognition.self, from: $0) } }
         set {
             recognitionData = newValue.flatMap { try? JSONEncoder().encode($0) }
             confidenceBandRaw = newValue?.confidenceBand.rawValue
