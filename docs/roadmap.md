@@ -32,14 +32,14 @@ Goal: the app tells you when a scan is not good enough or incomplete, and sugges
 
 | # | Task | Who | Acceptance criterion |
 |---|------|-----|----------------------|
-| [ ] M2.1 | `QualityScorer` in `Recognition`: blur (Laplacian variance), glare (% clipped highlights), shadow (luma gradient), readability (share of low-confidence OCR words) (QLT-01) | | Scores computed per page off-main; unit tests with synthetic blurred/glared fixtures. |
-| [ ] M2.2 | Per-class thresholds + `QualityWarning` model; iOS 26 `DetectLensSmudgeRequest` behind `#available` | | Warnings fire on the bad fixtures, not on the clean ones. |
-| [ ] M2.3 | Duplicate pages via `GenerateImageFeaturePrintRequest` distance; page-sequence check from OCR ("3 de 7", "Page 3 of 7") (QLT-02) | | Duplicate fixture flagged; reordered fixture flagged; never auto-deleted or reordered. |
-| [ ] M2.4 | **Verification summary** on Review: page count, flagged pages with reason, one tap to the page; non-color indicators (§9 Accessibility) | | VoiceOver reads each warning; ignoring a warning is possible and logged as `quality_warning_resolved(ignore)`. |
-| [ ] M2.5 | `DocumentClassifier` (rule-based): Mexico-first vocabulary (RFC, CURP, INE, CFDI/factura, recibo, comprobante de domicilio, acta, contrato, nómina) + English; `NSDataDetector` for dates/amounts (CLS-01) | | Fixture set of 20 rendered docs classified ≥ 80% correctly; output is a suggestion the user can change. |
-| [ ] M2.6 | Filename + title suggestion `{type}-{party}-{yyyy-MM-dd}`; editable before export | | Suggested name appears on Review; export uses the edited name. |
-| [ ] M2.7 | Fixture corpus: ~50 rendered pages across sizes/fonts/rotations with expected labels under `Tests/Fixtures/` (§14) | | Corpus documented in `Tests/README.md`; no real personal documents. |
-| [ ] M2.8 | iOS 26 `RecognizeDocumentsRequest` spike: does document structure improve classification? (spike 5) | | Short write-up appended to this file under "Learnings". |
+| [~] M2.1 | `QualityScorer` in `Recognition`: blur (Laplacian variance), glare (% clipped highlights), shadow (luma gradient), readability (share of low-confidence OCR words) (QLT-01) | ketochi · Claude | Scores computed per page off-main; unit tests with synthetic blurred/glared fixtures. |
+| [~] M2.2 | Per-class thresholds + `QualityWarning` model; iOS 26 `DetectLensSmudgeRequest` behind `#available` | ketochi · Claude | Warnings fire on the bad fixtures, not on the clean ones. |
+| [~] M2.3 | Duplicate pages via `GenerateImageFeaturePrintRequest` distance; page-sequence check from OCR ("3 de 7", "Page 3 of 7") (QLT-02) | ketochi · Claude | Duplicate fixture flagged; reordered fixture flagged; never auto-deleted or reordered. |
+| [~] M2.4 | **Verification summary** on Review: page count, flagged pages with reason, one tap to the page; non-color indicators (§9 Accessibility) | ketochi · Claude | VoiceOver reads each warning; ignoring a warning is possible and logged as `quality_warning_resolved(ignore)`. |
+| [~] M2.5 | `DocumentClassifier` (rule-based): Mexico-first vocabulary (RFC, CURP, INE, CFDI/factura, recibo, comprobante de domicilio, acta, contrato, nómina) + English; `NSDataDetector` for dates/amounts (CLS-01) | ketochi · Claude | Fixture set of 20 rendered docs classified ≥ 80% correctly; output is a suggestion the user can change. |
+| [~] M2.6 | Filename + title suggestion `{type}-{party}-{yyyy-MM-dd}`; editable before export | ketochi · Claude | Suggested name appears on Review; export uses the edited name. |
+| [~] M2.7 | Fixture corpus: ~50 rendered pages across sizes/fonts/rotations with expected labels under `Tests/Fixtures/` (§14) | ketochi · Claude | Corpus documented in `Tests/README.md`; no real personal documents. |
+| [~] M2.8 | iOS 26 `RecognizeDocumentsRequest` spike: does document structure improve classification? (spike 5) | ketochi · Claude | Short write-up appended to this file under "Learnings". |
 
 ## Next → M3 · Real capture (replaces the VisionKit stand-in)
 
