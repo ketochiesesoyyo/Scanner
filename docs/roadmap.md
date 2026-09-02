@@ -146,7 +146,13 @@ Goal: CAP-01 and CAP-04 for real — live guidance, auto-capture, untouched orig
   every page on the main thread inside the delegate — right as the cover's dismissal animation needed
   the main thread to finalize, wedging the transition forever. The scan handle is now parked and pages
   are rendered off-main, one at a time, only after `onDismiss`. General rule: a presentation delegate
-  callback may do nothing heavier than storing a reference.
+  callback may do nothing heavier than storing a reference. (6) Third iOS 18 SwiftData crash: adding a
+  non-optional array attribute (`ignoredWarningKeys: [String] = []`) to an existing store leaves old
+  rows nil after lightweight migration, and the getter fatals ("Unable to convert nil to expected type
+  Array<String>"). New model attributes must be stored as optionals (with `@Attribute(originalName:)`
+  when renaming) and unwrapped in a computed accessor. Also seen on iOS 18: benign-but-noisy
+  "remapped to a temporary identifier" logs on save — non-fatal since the unique constraints went.
+  On-device numbers from this run: OCR 656 ms/page; verification found 2 warnings on a real capture.
 
 ## Open questions (for the owner)
 

@@ -25,8 +25,10 @@ public final class ScanRecord {
     public var contentRevision: Int = 0
     @Attribute(.externalStorage) public var verificationData: Data? = nil
     @Attribute(.externalStorage) public var classificationData: Data? = nil
-    /// Keys of warnings the user chose to ignore (QLT-02: warn, let the user decide).
-    public var ignoredWarningKeys: [String] = []
+    /// Stored optional: on iOS 18, lightweight migration leaves newly added array attributes nil on
+    /// pre-existing rows and then fatals on non-optional access ("Unable to convert nil to expected
+    /// type Array<String>"). `originalName` keeps the column from the earlier schema.
+    @Attribute(originalName: "ignoredWarningKeys") private var ignoredWarningKeysStorage: [String]? = []
     @Relationship(deleteRule: .cascade, inverse: \PageRecord.document)
     public var pages: [PageRecord] = []
 
@@ -47,6 +49,12 @@ public final class ScanRecord {
     public var state: ScanState {
         get { ScanState(rawValue: stateRaw) ?? .ready }
         set { stateRaw = newValue.rawValue }
+    }
+
+    /// Keys of warnings the user chose to ignore (QLT-02: warn, let the user decide). Never nil.
+    public var ignoredWarningKeys: [String] {
+        get { ignoredWarningKeysStorage ?? [] }
+        set { ignoredWarningKeysStorage = newValue }
     }
 
     public var orderedPages: [PageRecord] { pages.sorted { $0.index < $1.index } }
