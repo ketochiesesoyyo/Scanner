@@ -123,6 +123,14 @@ Goal: CAP-01 and CAP-04 for real — live guidance, auto-capture, untouched orig
   (badge below text), Settings (badge in footer + plain-language data section). Camera permission and
   Face ID strings say why and that nothing is uploaded.
 
+- **Device pass findings (2026-09-01, iPhone on iOS 18)**: two bugs the iOS 26 Simulator never showed.
+  (1) SwiftData: wiring a relationship on a model *before* `context.insert` crashes iOS 18's store on
+  the next save ("remapped to a temporary identifier … fatal logic error in DefaultStore") — always
+  insert first, then set relationships; per-page write-ahead saves are otherwise fine. (2) SwiftUI:
+  `navigationDestination` declared in a pushed view + a homogeneous typed path logs "Only root-level
+  navigation destinations are effective" and can dead-end — keep one root `NavigationPath` and declare
+  every destination at the root. Test on the oldest supported iOS before calling a milestone done.
+
 ## Open questions (for the owner)
 
 - Lock gate vs. presented sheets: when the app is locked while Settings or a share sheet is open, the

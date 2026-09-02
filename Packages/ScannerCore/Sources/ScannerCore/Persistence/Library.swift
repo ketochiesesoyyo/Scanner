@@ -58,8 +58,11 @@ public final class Library {
         let thumbnailPath = try files.writeThumbnail(assets.thumbnailData, document: record.id, page: pageID)
         let index = (record.pages.map(\.index).max() ?? -1) + 1
         let page = PageRecord(id: pageID, index: index, originalPath: originalPath, thumbnailPath: thumbnailPath, pixelSize: assets.pixelSize)
-        page.document = record
+        // Insert BEFORE wiring the relationship: setting `document` on a not-yet-registered model makes
+        // iOS 18's SwiftData crash on the next save ("remapped to a temporary identifier … fatal logic
+        // error in DefaultStore"). iOS 26 tolerates the old order, which is why tests didn't catch it.
         context.insert(page)
+        page.document = record
         record.updatedAt = .now
         record.contentRevision += 1
         try context.save()

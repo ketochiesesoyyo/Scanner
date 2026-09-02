@@ -51,7 +51,6 @@ struct ReviewView: View {
         }
         .navigationTitle("Review")
         .navigationBarTitleDisplayMode(.inline)
-        .navigationDestination(for: PageRecord.self) { PageDetailView(page: $0) }
         .safeAreaInset(edge: .bottom) { exportBar }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {

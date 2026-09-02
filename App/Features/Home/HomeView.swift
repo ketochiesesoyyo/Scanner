@@ -9,7 +9,7 @@ struct HomeView: View {
     @Query(sort: \ScanRecord.updatedAt, order: .reverse) private var records: [ScanRecord]
 
     @State private var capture = CaptureCoordinator()
-    @State private var path: [ScanRecord] = []
+    @State private var path = NavigationPath()
     @State private var showingSettings = false
     @State private var interrupted: [ScanRecord] = []
     @State private var errorMessage: String?
@@ -41,6 +41,7 @@ struct HomeView: View {
                 }
             }
             .navigationDestination(for: ScanRecord.self) { ReviewView(record: $0) }
+            .navigationDestination(for: PageRecord.self) { PageDetailView(page: $0) }
             .sheet(isPresented: $showingSettings) { SettingsView() }
             .captureHost(capture) { record in path.append(record) }
             .task {
